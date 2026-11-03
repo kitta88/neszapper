@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -53,4 +53,13 @@ jobs:
           name: gyroduckhunt-switch-homebrew
           path: standalone/gyroduckhunt.nro
           if-no-files-found: error
+
+      - name: Publish public NRO download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gyroduckhunt-build-${{ github.run_number }}
+          name: Gyro Zapper NES build ${{ github.run_number }}
+          body: Nintendo Switch homebrew build of Gyro Zapper NES.
+          files: standalone/gyroduckhunt.nro
+          fail_on_unmatched_files: true
 
