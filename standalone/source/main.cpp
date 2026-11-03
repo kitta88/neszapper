@@ -51,6 +51,7 @@ static SDL_AudioDeviceID audio_device = 0;
 static PadState pads[2];
 static HidSixAxisSensorHandle gyro_handle;
 static bool gyro_ready = false;
+static bool split_joycons_ready = false;
 static bool game_loaded = false;
 static bool frontend_ready = false;
 static bool crosshair_enabled = true;
@@ -69,6 +70,7 @@ static std::string loaded_path;
 static uint64_t pad0_buttons = 0;
 static uint64_t right_buttons = 0;
 static HidAnalogStickState left_stick = {};
+static unsigned split_retry_frames = 0;
 static unsigned core_width = GAME_W;
 static unsigned core_height = GAME_H;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
@@ -244,7 +246,7 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
    {
       switch (id)
       {
-         case RETRO_DEVICE_ID_JOYPAD_B:      return (pad0_buttons & HidNpadButton_L) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_B:      return (pad0_buttons & HidNpadButton_LeftSL) != 0;
          case RETRO_DEVICE_ID_JOYPAD_Y:      return (pad0_buttons & HidNpadButton_ZL) != 0;
          case RETRO_DEVICE_ID_JOYPAD_SELECT: return (pad0_buttons & HidNpadButton_LeftSL) != 0;
          case RETRO_DEVICE_ID_JOYPAD_START:  return (pad0_buttons & HidNpadButton_StickL) != 0;
@@ -252,10 +254,10 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
          case RETRO_DEVICE_ID_JOYPAD_DOWN:   return (pad0_buttons & HidNpadButton_Down) != 0 || left_stick.y < -12000;
          case RETRO_DEVICE_ID_JOYPAD_LEFT:   return (pad0_buttons & HidNpadButton_Left) != 0 || left_stick.x < -12000;
          case RETRO_DEVICE_ID_JOYPAD_RIGHT:  return (pad0_buttons & HidNpadButton_Right) != 0 || left_stick.x > 12000;
-         case RETRO_DEVICE_ID_JOYPAD_A:      return (pad0_buttons & HidNpadButton_R) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_X:      return (pad0_buttons & HidNpadButton_LeftSL) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_L:      return (pad0_buttons & HidNpadButton_L) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_L2:     return (pad0_buttons & HidNpadButton_ZL) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_A:      return (pad0_buttons & HidNpadButton_LeftSR) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_X:      return (pad0_buttons & HidNpadButton_L) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_L:      return (pad0_buttons & HidNpadButton_LeftSL) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_L2:     return (pad0_buttons & HidNpadButton_L) != 0;
          case RETRO_DEVICE_ID_JOYPAD_L3:     return (pad0_buttons & HidNpadButton_StickL) != 0;
       }
       return 0;
@@ -426,26 +428,31 @@ static void render_menu(void)
    SDL_RenderClear(renderer);
    SDL_Color white = { 240, 245, 255, 255 };
    SDL_Color cyan = { 80, 220, 255, 255 };
-   draw_text(64, 48, "GYRO ZAPPER - SELECT NES ROM", 3, cyan);
-   draw_text(64, 92, "A: PLAY   UP DOWN: SELECT", 2, white);
-   draw_text(64, 124, "ZR: FIRE   PLUS + R STICK: RECENTER", 2, white);
-   draw_text(64, 156, gyro_ready ? "RIGHT GYRO READY" : "RIGHT GYRO NOT FOUND", 2,
+   draw_text(64, 36, "GYRO ZAPPER - SELECT NES ROM", 3, cyan);
+   draw_text(64, 74, "P1 LEFT JOY-CON: UP/DOWN PICK   SL/STICK: PLAY", 2, white);
+   draw_text(64, 100, "D-PAD/STICK: MOVE   SL: NES B   SR: NES A", 2, white);
+   draw_text(64, 126, "ZL: TURBO B   L: TURBO A   STICK: START   MINUS: SELECT", 2, white);
+   draw_text(64, 158, "P2 RIGHT JOY-CON: GYRO AIM   ZR: FIRE", 2, white);
+   draw_text(64, 184, "PLUS + R STICK: RECENTER   MINUS + SL: ROM LIST", 2, white);
+   draw_text(64, 210, split_joycons_ready ? "LEFT P1 / RIGHT P2 SPLIT READY" : "SET LEFT P1 AND RIGHT P2 AS SEPARATE JOY-CONS", 2,
+         split_joycons_ready ? cyan : SDL_Color{255, 180, 80, 255});
+   draw_text(920, 210, gyro_ready ? "GYRO OK" : "GYRO WAIT", 2,
          gyro_ready ? cyan : SDL_Color{255, 100, 80, 255});
    if (roms.empty())
    {
-      draw_text(64, 210, "NO ROMS FOUND", 3, white);
-      draw_text(64, 254, "COPY NES FILES TO /SWITCH/GYRODUCKHUNT/ROMS", 2, cyan);
+      draw_text(64, 270, "NO ROMS FOUND", 3, white);
+      draw_text(64, 314, "COPY NES FILES TO /SWITCH/GYRODUCKHUNT/ROMS", 2, cyan);
    }
    else
    {
-      int first = std::max(0, selected_rom - 18);
-      int last = std::min((int)roms.size(), first + 25);
+      int first = std::max(0, selected_rom - 12);
+      int last = std::min((int)roms.size(), first + 20);
       for (int i = first; i < last; i++)
       {
-         int y = 190 + (i - first) * 19;
+         int y = 258 + (i - first) * 20;
          if (i == selected_rom)
          {
-            SDL_Rect highlight = { 48, y - 3, 850, 18 };
+            SDL_Rect highlight = { 48, y - 3, 850, 19 };
             SDL_SetRenderDrawColor(renderer, 36, 76, 120, 255);
             SDL_RenderFillRect(renderer, &highlight);
          }
@@ -474,7 +481,7 @@ static void poll_switch_input(void)
    else if (gyro_ready)
    {
       HidSixAxisSensorState state;
-      if (R_SUCCEEDED(hidGetSixAxisSensorStates(gyro_handle, &state, 1)) && state.delta_time)
+      if (hidGetSixAxisSensorStates(gyro_handle, &state, 1) > 0 && state.delta_time)
       {
          float dt = std::min(0.05f, (float)state.delta_time / 1000000000.0f);
          float dx = -state.angular_velocity.y * dt * GYRO_GAIN;
@@ -487,6 +494,25 @@ static void poll_switch_input(void)
          cursor_dy += iy;
       }
    }
+}
+
+static void initialize_right_gyro(void)
+{
+   if (gyro_ready)
+      return;
+   if (R_SUCCEEDED(hidGetSixAxisSensorHandles(&gyro_handle, 1,
+               HidNpadIdType_No2, HidNpadStyleTag_NpadJoyRight)) &&
+         R_SUCCEEDED(hidStartSixAxisSensor(gyro_handle)))
+      gyro_ready = true;
+}
+
+static void assign_split_joycons(void)
+{
+   Result left_result = hidSetNpadJoyAssignmentModeSingle(
+         HidNpadIdType_No1, HidNpadJoyDeviceType_Left);
+   Result right_result = hidSetNpadJoyAssignmentModeSingle(
+         HidNpadIdType_No2, HidNpadJoyDeviceType_Right);
+   split_joycons_ready = R_SUCCEEDED(left_result) && R_SUCCEEDED(right_result);
 }
 
 static void start_core(void)
@@ -529,14 +555,13 @@ int main(int, char**)
       SDL_PauseAudioDevice(audio_device, 0);
 
    padConfigureInput(2, HidNpadStyleSet_NpadStandard);
-   padInitializeDefault(&pads[0]);
+   /* Force detached Joy-Cons into separate player slots with fixed handedness. */
+   assign_split_joycons();
+   padInitialize(&pads[0], HidNpadIdType_No1);
    padInitialize(&pads[1], HidNpadIdType_No2);
    padUpdate(&pads[0]);
    padUpdate(&pads[1]);
-   if (R_SUCCEEDED(hidGetSixAxisSensorHandles(&gyro_handle, 1,
-               HidNpadIdType_No2, HidNpadStyleTag_NpadJoyRight)) &&
-         R_SUCCEEDED(hidStartSixAxisSensor(gyro_handle)))
-      gyro_ready = true;
+   initialize_right_gyro();
 
    start_core();
    scan_roms();
@@ -546,6 +571,12 @@ int main(int, char**)
    while (running && appletMainLoop())
    {
       poll_switch_input();
+      if (!split_joycons_ready && ++split_retry_frames >= 60)
+      {
+         split_retry_frames = 0;
+         assign_split_joycons();
+      }
+      initialize_right_gyro();
       uint64_t buttons = padGetButtons(&pads[0]);
       uint64_t pressed = buttons & ~previous_buttons;
       previous_buttons = buttons;
@@ -556,27 +587,19 @@ int main(int, char**)
             selected_rom = std::max(0, selected_rom - 1);
          if (!roms.empty() && (pressed & HidNpadButton_Down))
             selected_rom = std::min((int)roms.size() - 1, selected_rom + 1);
-         if ((pressed & HidNpadButton_A) && !roms.empty())
+         if ((pressed & (HidNpadButton_LeftSL | HidNpadButton_StickL)) && !roms.empty())
             load_selected_rom();
          if (pressed & HidNpadButton_Minus)
             scan_roms();
-         if (pressed & HidNpadButton_Plus)
+         if ((pressed & HidNpadButton_Plus) || (right_buttons & HidNpadButton_Plus))
             running = false;
          if (roms.empty() || !game_loaded)
             render_menu();
       }
       else
       {
-         if ((buttons & (HidNpadButton_Plus | HidNpadButton_StickL)) ==
-               (HidNpadButton_Plus | HidNpadButton_StickL))
-         {
-            retro_unload_game();
-            game_loaded = false;
-            rom_data.clear();
-            scan_roms();
-            continue;
-         }
-         if (pressed & HidNpadButton_Minus)
+         if ((buttons & (HidNpadButton_Minus | HidNpadButton_LeftSL)) ==
+               (HidNpadButton_Minus | HidNpadButton_LeftSL))
          {
             retro_unload_game();
             game_loaded = false;
