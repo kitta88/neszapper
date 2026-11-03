@@ -763,7 +763,8 @@ static void start_core(void)
 
 int main(int, char**)
 {
-   romfsInit();
+   if (R_FAILED(romfsInit()))
+      return 6;
    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
       return 1;
    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");

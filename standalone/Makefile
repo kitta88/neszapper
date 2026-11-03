@@ -5,13 +5,13 @@ $(error DEVKITPRO is not set)
 endif
 
 TOPDIR ?= $(CURDIR)
+ROMFS := romfs
 include $(DEVKITPRO)/libnx/switch_rules
 
 TARGET      := gyroduckhunt
 BUILD       := build
 SOURCES     := source
 DATA        :=
-ROMFS       := romfs
 INCLUDES    := ../nestopia/libretro/libretro-common/include
 APP_TITLE   := Gyro Zapper NES
 APP_AUTHOR  := Kitta88
