@@ -27,7 +27,7 @@ CXXFLAGS    := $(CFLAGS) $(foreach dir,$(INCLUDES),-I$(TOPDIR)/$(dir)) \
                -D_REENTRANT -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := -g $(ARCH)
 LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH)
-LIBS        := $(shell $(DEVKITPRO)/portlibs/switch/bin/sdl2-config --libs) -lSDL2_ttf -lnestopia \
+LIBS        := $(shell $(DEVKITPRO)/portlibs/switch/bin/sdl2-config --libs) -lSDL2_ttf -lfreetype -lharfbuzz -lnestopia \
                -lbz2 -lz -llzma -lm -lstdc++ -lpthread -lEGL -lGLESv2 \
                -lglapi -ldrm_nouveau -lnx
 ifneq ($(BUILD),$(notdir $(CURDIR)))
