@@ -1,6 +1,6 @@
-# Gyro Zapper NES for Nintendo Switch
+# ZAPP-con for Nintendo Switch
 
-A standalone Switch homebrew frontend for the Nestopia libretro core. It starts with a ROM picker and runs NES/Famicom content from the microSD card. At startup it requests separate controller slots for a left Joy-Con on player 1 and a right Joy-Con on player 2. Zapper games use the right Joy-Con gyro as an on-screen pointer and ZR as the trigger.
+A standalone Switch homebrew frontend for the Nestopia libretro core. It starts with a multilingual ROM picker and runs NES/Famicom content from the microSD card. At startup it requests separate controller slots for a left Joy-Con on player 1 and a right Joy-Con on player 2. Zapper games use the right Joy-Con gyro as an on-screen pointer and ZR as the trigger.
 
 ## Install and use
 

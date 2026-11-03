@@ -6,17 +6,17 @@ endif
 
 TOPDIR ?= $(CURDIR)
 ROMFS := romfs
+TARGET := gyroduckhunt
+APP_TITLE := ZAPP-con
+APP_AUTHOR := Kitta88
+APP_VERSION := 0.2.0
+ICON := icon.jpg
 include $(DEVKITPRO)/libnx/switch_rules
 
-TARGET      := gyroduckhunt
 BUILD       := build
 SOURCES     := source
 DATA        :=
 INCLUDES    := ../nestopia/libretro/libretro-common/include
-APP_TITLE   := Gyro Zapper NES
-APP_AUTHOR  := Kitta88
-APP_VERSION := 0.1.0
-NO_ICON     := 1
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 LIBDIRS     := $(DEVKITPRO)/portlibs/switch $(DEVKITPRO)/libnx
@@ -47,8 +47,7 @@ export OFILES_SRC
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib) -L$(TOPDIR)
-export APP_TITLE APP_AUTHOR APP_VERSION NO_ICON
-export NROFLAGS := $(NROFLAGS) --romfsdir=$(abspath $(TOPDIR)/$(ROMFS))
+export APP_TITLE APP_AUTHOR APP_VERSION
 
 .PHONY: all clean $(BUILD)
 all: $(BUILD)
@@ -67,6 +66,8 @@ DEPENDS := $(OFILES:.o=.d)
 all: $(OUTPUT).nro
 
 $(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp
+	@elf2nro $< $@ --nacp=$(OUTPUT).nacp --icon=$(TOPDIR)/$(ICON) --romfsdir=$(TOPDIR)/$(ROMFS)
+	@echo "built ... $(notdir $@)"
 $(OUTPUT).elf: $(OFILES)
 
 -include $(DEPENDS)

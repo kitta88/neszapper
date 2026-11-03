@@ -428,7 +428,7 @@ struct MenuText
 };
 
 static const MenuText menu_text[] = {
-   {"Р СѓСЃСЃРєРёР№", "GYRO ZAPPER вЂ” РР“Р Р« NES", "РРіСЂС‹ NES СЃ РїСЂРёС†РµР»РёРІР°РЅРёРµРј РіРёСЂРѕСЃРєРѕРїРѕРј Joy-Con", "РљРќРћРџРљР Р РЈРџР РђР’Р›Р•РќРР•",
+   {"Р СѓСЃСЃРєРёР№", "ZAPP-con вЂ” РР“Р Р« NES", "РРіСЂС‹ NES СЃ РїСЂРёС†РµР»РёРІР°РЅРёРµРј РіРёСЂРѕСЃРєРѕРїРѕРј Joy-Con", "РљРќРћРџРљР Р РЈРџР РђР’Р›Р•РќРР•",
     "Р’Р«Р‘РћР : РєСЂРµСЃС‚РѕРІРёРЅР° РІРІРµСЂС…/РІРЅРёР·; SL РёР»Рё СЃС‚РёРє вЂ” РёРіСЂР°С‚СЊ",
     "Р’ РР“Р Р•: РєСЂРµСЃС‚РѕРІРёРЅР°/СЃС‚РёРє вЂ” С…РѕРґСЊР±Р°; SL=B; SR=A",
     "ZL/L вЂ” Turbo B/A; СЃС‚РёРє=START; MINUS=SELECT",
@@ -439,7 +439,7 @@ static const MenuText menu_text[] = {
     "РР“Р Р« РќР• РќРђР™Р”Р•РќР«", "РЎРєРѕРїРёСЂСѓР№С‚Рµ ROM-С„Р°Р№Р»С‹ РІ /switch/gyroduckhunt/roms",
     "Р РђР—Р”Р•Р›Р•РќРР• Р“РћРўРћР’Рћ", "РџРћР”РљР›Р®Р§РРўР• JOY-CON РћРўР”Р•Р›Р¬РќРћ", "Р“РР РћРЎРљРћРџ Р“РћРўРћР’", "РћР–РР”РђРќРР• Р“РР РћРЎРљРћРџРђ",
     "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ РІС‹Р±СЂР°РЅРЅСѓСЋ РёРіСЂСѓ", "Nestopia РЅРµ СЃРјРѕРіР»Р° РѕС‚РєСЂС‹С‚СЊ ROM"},
-   {"English", "GYRO ZAPPER вЂ” NES GAMES", "NES games with Joy-Con gyro aiming", "CONTROLS",
+   {"English", "ZAPP-con вЂ” NES GAMES", "NES games with Joy-Con gyro aiming", "CONTROLS",
     "PICK: D-pad up/down; SL or stick click вЂ” play",
     "IN GAME: D-pad/stick move; SL=B; SR=A",
     "ZL/L вЂ” Turbo B/A; stick=START; MINUS=SELECT",
@@ -450,7 +450,7 @@ static const MenuText menu_text[] = {
     "NO GAMES FOUND", "Copy ROM files to /switch/gyroduckhunt/roms",
     "SPLIT CONTROLLERS READY", "DETACH JOY-CONS SEPARATELY", "GYRO READY", "WAITING FOR GYRO",
     "Could not read the selected game", "Nestopia could not load this ROM"},
-   {"ж—Ґжњ¬иЄћ", "г‚ёгѓЈг‚¤гѓ­г‚¶гѓѓгѓ‘гѓј вЂ” NES", "Joy-ConгЃ®г‚ёгѓЈг‚¤гѓ­гЃ§з…§жє–г‚’ж“ЌдЅњ", "ж“ЌдЅњж–№жі•",
+   {"ж—Ґжњ¬иЄћ", "ZAPP-con вЂ” NESг‚Ігѓјгѓ ", "Joy-ConгЃ®г‚ёгѓЈг‚¤гѓ­гЃ§з…§жє–г‚’ж“ЌдЅњ", "ж“ЌдЅњж–№жі•",
     "йЃёжЉћпјљеЌЃе­—г‚­гѓјдёЉдё‹гЂЃSLгЃѕгЃџгЃЇг‚№гѓ†г‚Јгѓѓг‚ЇжЉјгЃ—иѕјгЃїгЃ§ж±єе®љ",
     "г‚Ігѓјгѓ пјљеЌЃе­—г‚­гѓјпјЏг‚№гѓ†г‚Јгѓѓг‚Їз§»е‹•гЂЃSL=BгЂЃSR=A",
     "ZL/LпјљйЂЈе°„B/AгЂЃг‚№гѓ†г‚Јгѓѓг‚ЇжЉјгЃ—иѕјгЃї=STARTгЂЃMINUS=SELECT",
@@ -461,7 +461,7 @@ static const MenuText menu_text[] = {
     "г‚Ігѓјгѓ гЃЊгЃ‚г‚ЉгЃѕгЃ›г‚“", "/switch/gyroduckhunt/roms гЃ«ROMг‚’г‚ігѓ”гѓјгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„",
     "е€†й›ўжЋҐз¶љOK", "Joy-Conг‚’еЂ‹е€ҐгЃ«жЋҐз¶љгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„", "г‚ёгѓЈг‚¤гѓ­жє–е‚™OK", "г‚ёгѓЈг‚¤гѓ­еѕ…ж©џдё­",
     "йЃёжЉћгЃ—гЃџг‚Ігѓјгѓ г‚’иЄ­гЃїиѕјг‚ЃгЃѕгЃ›г‚“", "NestopiaгЃЊгЃ“гЃ®ROMг‚’иЄ­гЃїиѕјг‚ЃгЃѕгЃ›г‚“"},
-   {"з®ЂдЅ“дё­ж–‡", "й™Ђићєд»Єе…‰жћЄ вЂ” NES жёёж€Џ", "дЅїз”Ё Joy-Con й™Ђићєд»Єзћ„е‡† NES жёёж€Џ", "жЊ‰й”®иЇґжЋ",
+   {"з®ЂдЅ“дё­ж–‡", "ZAPP-con вЂ” NES жёёж€Џ", "дЅїз”Ё Joy-Con й™Ђићєд»Єзћ„е‡† NES жёёж€Џ", "жЊ‰й”®иЇґжЋ",
     "йЂ‰ж‹©пјљеЌЃе­—й”®дёЉ/дё‹пј›жЊ‰ SL ж€–ж‘‡жќ†ејЂе§‹",
     "жёёж€Џдё­пјљеЌЃе­—й”®/ж‘‡жќ†з§»еЉЁпј›SL=Bпј›SR=A",
     "ZL/LпјљиїћеЏ‘ B/Aпј›ж‘‡жќ†жЊ‰дё‹=STARTпј›MINUS=SELECT",
@@ -472,7 +472,7 @@ static const MenuText menu_text[] = {
     "жњЄж‰ѕе€°жёёж€Џ", "е°† ROM е¤Ќе€¶е€° /switch/gyroduckhunt/roms",
     "е€†дЅ“ж‰‹жџ„е·Іе°±з»Є", "иЇ·е€†е€«иїћжЋҐ Joy-Con", "й™Ђићєд»Єе·Іе°±з»Є", "ж­ЈењЁз­‰еѕ…й™Ђићєд»Є",
     "ж— жі•иЇ»еЏ–ж‰ЂйЂ‰жёёж€Џ", "Nestopia ж— жі•еЉ иЅЅж­¤ ROM"},
-   {"FranГ§ais", "GYRO ZAPPER вЂ” JEUX NES", "Jeux NES visГ©s au gyroscope Joy-Con", "COMMANDES",
+   {"FranГ§ais", "ZAPP-con вЂ” JEUX NES", "Jeux NES visГ©s au gyroscope Joy-Con", "COMMANDES",
     "Choisir : croix haut/bas ; SL ou stick pour jouer",
     "Jeu : croix/stick dГ©placer ; SL=B ; SR=A",
     "ZL/L : Turbo B/A ; stick=START ; MINUS=SELECT",
@@ -483,7 +483,7 @@ static const MenuText menu_text[] = {
     "AUCUN JEU", "Copiez les ROM dans /switch/gyroduckhunt/roms",
     "MANETTES SГ‰PARГ‰ES OK", "DГ‰TACHEZ LES JOY-CON", "GYRO PRГЉT", "GYRO EN ATTENTE",
     "Impossible de lire le jeu", "Nestopia ne peut pas charger cette ROM"},
-   {"EspaГ±ol", "GYRO ZAPPER вЂ” JUEGOS NES", "Apunta con el giroscopio del Joy-Con", "CONTROLES",
+   {"EspaГ±ol", "ZAPP-con вЂ” JUEGOS NES", "Apunta con el giroscopio del Joy-Con", "CONTROLES",
     "Elegir: cruceta arriba/abajo; SL o stick para jugar",
     "Juego: cruceta/stick mover; SL=B; SR=A",
     "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
@@ -494,7 +494,7 @@ static const MenuText menu_text[] = {
     "NO HAY JUEGOS", "Copia ROM en /switch/gyroduckhunt/roms",
     "MANDOS SEPARADOS OK", "DESCONECTA LOS JOY-CON", "GIROSCOPIO LISTO", "ESPERANDO GIROSCOPIO",
     "No se puede leer el juego", "Nestopia no pudo cargar esta ROM"},
-   {"PortuguГЄs", "GYRO ZAPPER вЂ” JOGOS NES", "Mira com o giroscГіpio do Joy-Con", "CONTROLES",
+   {"PortuguГЄs", "ZAPP-con вЂ” JOGOS NES", "Mira com o giroscГіpio do Joy-Con", "CONTROLES",
     "Escolher: direcional cima/baixo; SL ou stick para jogar",
     "Jogo: direcional/stick mover; SL=B; SR=A",
     "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
@@ -505,7 +505,7 @@ static const MenuText menu_text[] = {
     "NENHUM JOGO", "Copie ROM para /switch/gyroduckhunt/roms",
     "CONTROLES SEPARADOS OK", "REMOVA OS JOY-CON", "GIROSCГ“PIO PRONTO", "AGUARDANDO GIROSCГ“PIO",
     "NГЈo foi possГ­vel ler o jogo", "Nestopia nГЈo conseguiu carregar esta ROM"},
-   {"Deutsch", "GYRO ZAPPER вЂ” NES-SPIELE", "Zielen mit dem Joy-Con-Gyroskop", "STEUERUNG",
+   {"Deutsch", "ZAPP-con вЂ” NES-SPIELE", "Zielen mit dem Joy-Con-Gyroskop", "STEUERUNG",
     "WГ¤hlen: Steuerkreuz hoch/runter; SL oder Stick startet",
     "Spiel: Steuerkreuz/Stick bewegen; SL=B; SR=A",
     "ZL/L: Turbo B/A; Stick=START; MINUS=SELECT",
@@ -516,7 +516,7 @@ static const MenuText menu_text[] = {
     "KEINE SPIELE", "ROM-Dateien nach /switch/gyroduckhunt/roms kopieren",
     "GETRENNTE CONTROLLER OK", "JOY-CON EINZELN TRENNEN", "GYRO BEREIT", "WARTE AUF GYRO",
     "Spiel kann nicht gelesen werden", "Nestopia konnte diese ROM nicht laden"},
-   {"Italiano", "GYRO ZAPPER вЂ” GIOCHI NES", "Mira con il giroscopio Joy-Con", "COMANDI",
+   {"Italiano", "ZAPP-con вЂ” GIOCHI NES", "Mira con il giroscopio Joy-Con", "COMANDI",
     "Scegli: croce su/giГ№; SL o stick per avviare",
     "Gioco: croce/stick muove; SL=B; SR=A",
     "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
@@ -791,7 +791,7 @@ int main(int, char**)
    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
       return 1;
    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
-   window_handle = SDL_CreateWindow("Gyro Zapper NES", SDL_WINDOWPOS_CENTERED,
+   window_handle = SDL_CreateWindow("ZAPP-con", SDL_WINDOWPOS_CENTERED,
          SDL_WINDOWPOS_CENTERED, SCREEN_W, SCREEN_H, SDL_WINDOW_FULLSCREEN);
    if (!window_handle)
       return 2;
