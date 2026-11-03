@@ -42,7 +42,7 @@ static const int SCREEN_W = 1280;
 static const int SCREEN_H = 720;
 static const int GAME_W = 256;
 static const int GAME_H = 240;
-static const float GYRO_GAIN = 10430.0f;
+static const float GYRO_GAIN = 31290.0f;
 static const int DEFAULT_AIM_SENSITIVITY = 20;
 static const int MIN_AIM_SENSITIVITY = 1;
 static const int MAX_AIM_SENSITIVITY = 20;
@@ -533,7 +533,7 @@ static void poll_switch_input(void)
       {
          float dt = std::min(0.05f, (float)state.delta_time / 1000000000.0f);
          float scale = (float)aim_sensitivity;
-         float dx =  state.angular_velocity.z * dt * GYRO_GAIN * scale;
+         float dx = -state.angular_velocity.z * dt * GYRO_GAIN * scale;
          float dy = -state.angular_velocity.x * dt * GYRO_GAIN * scale;
          int ix = (int)dx;
          int iy = (int)dy;
