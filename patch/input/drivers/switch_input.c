@@ -136,6 +136,9 @@ typedef struct switch_input
    uint32_t mouse_previous_buttons;
    bool gyro_aim_active;
    bool gyro_sensor_started;
+   bool gyro_status_logged;
+   bool gyro_last_trigger;
+   bool gyro_last_recenter;
 
    /* touch mouse */
    bool touch_mouse_indirect;
@@ -323,6 +326,17 @@ static void switch_input_poll(void *data)
       if (switch_joypad_lightgun_state(&trigger, &recenter))
       {
          sw->mouse_button_left = trigger;
+         if (!sw->gyro_status_logged)
+         {
+            RARCH_LOG("[Switch Zapper] patched gyro mouse driver active on pad 2\n");
+            sw->gyro_status_logged = true;
+         }
+         if (trigger != sw->gyro_last_trigger)
+            RARCH_LOG("[Switch Zapper] right Joy-Con ZR %s\n", trigger ? "pressed" : "released");
+         if (recenter && !sw->gyro_last_recenter)
+            RARCH_LOG("[Switch Zapper] recenter chord Plus + R-stick pressed\n");
+         sw->gyro_last_trigger = trigger;
+         sw->gyro_last_recenter = recenter;
          if (!sw->gyro_sensor_started)
          {
             if (R_SUCCEEDED(hidGetSixAxisSensorHandles(
@@ -333,8 +347,13 @@ static void switch_input_poll(void *data)
                {
                   sw->sixaxis_handles_count[1] = 1;
                   sw->gyro_sensor_started = true;
+                  RARCH_LOG("[Switch Zapper] right Joy-Con gyro sensor started\n");
                }
+               else
+                  RARCH_LOG("[Switch Zapper] failed to start right Joy-Con gyro sensor\n");
             }
+            else
+               RARCH_LOG("[Switch Zapper] right Joy-Con gyro handle unavailable\n");
          }
          if (recenter)
          {
