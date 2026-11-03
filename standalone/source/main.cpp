@@ -54,7 +54,6 @@ static bool gyro_ready = false;
 static bool game_loaded = false;
 static bool frontend_ready = false;
 static bool crosshair_enabled = true;
-static bool gyro_aim_active = true;
 static int cursor_x = 32767;
 static int cursor_y = 32767;
 static int cursor_dx = 0;
@@ -380,6 +379,7 @@ static void draw_text(int x, int y, const std::string& text, int scale, SDL_Colo
       int idx = (c >= 'A' && c <= 'Z') ? c - 'A' :
          (c >= '0' && c <= '9') ? 26 + c - '0' : -1;
       if (idx >= 0)
+      {
          for (int col = 0; col < 5; col++)
             for (int row = 0; row < 7; row++)
                if (font[idx][col] & (1 << row))
@@ -387,6 +387,7 @@ static void draw_text(int x, int y, const std::string& text, int scale, SDL_Colo
                   SDL_Rect pixel = { x + col * scale, y + row * scale, scale, scale };
                   SDL_RenderFillRect(renderer, &pixel);
                }
+      }
       else if (c == '-')
       {
          SDL_Rect pixel = { x, y + 3 * scale, 4 * scale, scale };
@@ -529,7 +530,7 @@ int main(int, char**)
 
    padConfigureInput(2, HidNpadStyleSet_NpadStandard);
    padInitializeDefault(&pads[0]);
-   padInitialize(&pads[1], 1);
+   padInitialize(&pads[1], HidNpadIdType_No2);
    padUpdate(&pads[0]);
    padUpdate(&pads[1]);
    if (R_SUCCEEDED(hidGetSixAxisSensorHandles(&gyro_handle, 1,
