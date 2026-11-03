@@ -138,6 +138,8 @@ typedef struct switch_input
    bool gyro_aim_active;
    bool gyro_sensor_started;
    bool gyro_status_logged;
+   bool gyro_lightgun_query_logged;
+   bool gyro_pointer_query_logged;
    bool gyro_last_trigger;
    bool gyro_last_recenter;
 
@@ -414,6 +416,28 @@ static int16_t switch_input_state(
 #ifdef HAVE_LIBNX
       case RETRO_DEVICE_KEYBOARD:
          return (id && id < RETROK_LAST) && sw->keyboard_state[rarch_keysym_lut[(enum retro_key)id]];
+      case RETRO_DEVICE_LIGHTGUN:
+         if (port == 1 && sw->gyro_aim_active)
+         {
+            if (!sw->gyro_lightgun_query_logged)
+            {
+               RARCH_LOG("[Switch Zapper] core requested LIGHTGUN input on port 2\n");
+               sw->gyro_lightgun_query_logged = true;
+            }
+            switch (id)
+            {
+               case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X:
+                  return (int16_t)(((int64_t)sw->mouse_x * 65534) / MOUSE_MAX_X - 32767);
+               case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y:
+                  return (int16_t)(((int64_t)sw->mouse_y * 65534) / MOUSE_MAX_Y - 32767);
+               case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
+                  return sw->mouse_button_left;
+               case RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN:
+               case RETRO_DEVICE_ID_LIGHTGUN_RELOAD:
+                  return 0;
+            }
+         }
+         return 0;
       case RETRO_DEVICE_MOUSE:
       case RARCH_DEVICE_MOUSE_SCREEN:
          {
@@ -463,6 +487,24 @@ static int16_t switch_input_state(
          }
          break;
       case RETRO_DEVICE_POINTER:
+         if (port == 1 && sw->gyro_aim_active)
+         {
+            if (!sw->gyro_pointer_query_logged)
+            {
+               RARCH_LOG("[Switch Zapper] core requested POINTER input on port 2\n");
+               sw->gyro_pointer_query_logged = true;
+            }
+            switch (id)
+            {
+               case RETRO_DEVICE_ID_POINTER_PRESSED:
+                  return sw->mouse_button_left;
+               case RETRO_DEVICE_ID_POINTER_X:
+                  return (int16_t)(((int64_t)sw->mouse_x * 65534) / MOUSE_MAX_X - 32767);
+               case RETRO_DEVICE_ID_POINTER_Y:
+                  return (int16_t)(((int64_t)sw->mouse_y * 65534) / MOUSE_MAX_Y - 32767);
+            }
+            return 0;
+         }
          if (idx < MULTITOUCH_LIMIT)
          {
             switch (id)
