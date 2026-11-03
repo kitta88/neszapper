@@ -43,7 +43,7 @@ static const int SCREEN_H = 720;
 static const int GAME_W = 256;
 static const int GAME_H = 240;
 static const float GYRO_GAIN = 10430.0f;
-static const int DEFAULT_AIM_SENSITIVITY = 8;
+static const int DEFAULT_AIM_SENSITIVITY = 20;
 static const int MIN_AIM_SENSITIVITY = 1;
 static const int MAX_AIM_SENSITIVITY = 20;
 static const unsigned MAX_ROMS = 256;
@@ -73,6 +73,7 @@ static std::vector<uint8_t> rom_data;
 static std::string loaded_path;
 static uint64_t pad0_buttons = 0;
 static uint64_t right_buttons = 0;
+static uint64_t previous_right_buttons = 0;
 static HidAnalogStickState left_stick = {};
 static unsigned split_retry_frames = 0;
 static int aim_sensitivity = DEFAULT_AIM_SENSITIVITY;
@@ -131,15 +132,24 @@ static void scan_roms(void)
       selected_rom = roms.empty() ? 0 : (int)roms.size() - 1;
 }
 
+static void save_settings(void);
+
 static void load_settings(void)
 {
    FILE* f = fopen(CONFIG_PATH, "r");
-   int value;
+   int version, value;
    if (!f)
       return;
-   if (fscanf(f, "%d", &value) == 1)
+   if (fscanf(f, "%d %d", &version, &value) == 2 && version == 2)
       aim_sensitivity = std::max(MIN_AIM_SENSITIVITY,
             std::min(MAX_AIM_SENSITIVITY, value));
+   else
+   {
+      aim_sensitivity = DEFAULT_AIM_SENSITIVITY;
+      fclose(f);
+      save_settings();
+      return;
+   }
    fclose(f);
 }
 
@@ -148,7 +158,7 @@ static void save_settings(void)
    FILE* f = fopen(CONFIG_PATH, "w");
    if (!f)
       return;
-   fprintf(f, "%d\n", aim_sensitivity);
+   fprintf(f, "2 %d\n", aim_sensitivity);
    fclose(f);
 }
 
@@ -459,7 +469,7 @@ static void render_menu(void)
    draw_text(64, 100, "D-PAD/STICK: MOVE   SL: NES B   SR: NES A", 2, white);
    draw_text(64, 126, "ZL: TURBO B   L: TURBO A   STICK: START   MINUS: SELECT", 2, white);
    draw_text(64, 158, "P2 RIGHT JOY-CON: GYRO AIM   ZR: FIRE", 2, white);
-   draw_text(64, 184, "PLUS + R STICK: RECENTER   MINUS + SL: ROM LIST", 2, white);
+   draw_text(64, 184, "PLUS: RECENTER (OR + R STICK)   MINUS + SL: ROM LIST", 2, white);
    draw_text(64, 210, split_joycons_ready ? "LEFT P1 / RIGHT P2 SPLIT READY" : "SET LEFT P1 AND RIGHT P2 AS SEPARATE JOY-CONS", 2,
          split_joycons_ready ? cyan : SDL_Color{255, 180, 80, 255});
    draw_text(920, 210, gyro_ready ? "GYRO OK" : "GYRO WAIT", 2,
@@ -502,8 +512,16 @@ static void poll_switch_input(void)
       left_stick = padGetStickPos(&pads[0], 0);
    right_buttons = (uint64_t)padGetButtons(&pads[1]);
 
-   if ((right_buttons & (HidNpadButton_Plus | HidNpadButton_StickR)) ==
-         (HidNpadButton_Plus | HidNpadButton_StickR))
+   bool recenter_combo =
+      (right_buttons & (HidNpadButton_Plus | HidNpadButton_StickR)) ==
+      (HidNpadButton_Plus | HidNpadButton_StickR);
+   bool recenter_pressed =
+      ((right_buttons & HidNpadButton_Plus) && !(previous_right_buttons & HidNpadButton_Plus)) ||
+      (recenter_combo &&
+       (previous_right_buttons & (HidNpadButton_Plus | HidNpadButton_StickR)) !=
+       (HidNpadButton_Plus | HidNpadButton_StickR));
+   previous_right_buttons = right_buttons;
+   if (recenter_pressed)
    {
       cursor_x = cursor_y = 32767;
       cursor_dx = cursor_dy = 0;
@@ -515,7 +533,7 @@ static void poll_switch_input(void)
       {
          float dt = std::min(0.05f, (float)state.delta_time / 1000000000.0f);
          float scale = (float)aim_sensitivity;
-         float dx = -state.angular_velocity.y * dt * GYRO_GAIN * scale;
+         float dx =  state.angular_velocity.z * dt * GYRO_GAIN * scale;
          float dy = -state.angular_velocity.x * dt * GYRO_GAIN * scale;
          int ix = (int)dx;
          int iy = (int)dy;
