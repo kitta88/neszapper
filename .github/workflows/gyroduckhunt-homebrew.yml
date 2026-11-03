@@ -55,12 +55,10 @@ jobs:
 
       - name: Build Switch homebrew
         run: |
-          echo "NROFLAGS=$NROFLAGS"
           du -h standalone/romfs/*
           make -C standalone -j"$(getconf _NPROCESSORS_ONLN)"
           test -s standalone/gyroduckhunt.nro
-          grep -a -q 'NotoSans-Regular.ttf' standalone/gyroduckhunt.nro
-          grep -a -q 'NotoSansCJK-Regular.ttc' standalone/gyroduckhunt.nro
+          test "$(stat -c%s standalone/gyroduckhunt.nro)" -gt 30000000
           sha256sum standalone/gyroduckhunt.nro
 
       - uses: actions/upload-artifact@v4

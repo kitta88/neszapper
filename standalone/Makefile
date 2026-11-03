@@ -48,7 +48,7 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib) -L$(TOPDIR)
 export APP_TITLE APP_AUTHOR APP_VERSION NO_ICON
-export NROFLAGS += --romfsdir=$(TOPDIR)/$(ROMFS)
+export NROFLAGS := $(NROFLAGS) --romfsdir=$(abspath $(TOPDIR)/$(ROMFS))
 
 .PHONY: all clean $(BUILD)
 all: $(BUILD)

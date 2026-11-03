@@ -141,6 +141,8 @@ static void scan_roms(void)
 }
 
 static void save_settings(void);
+static const char* localized_read_error(void);
+static const char* localized_core_error(void);
 
 static void load_settings(void)
 {
@@ -203,7 +205,7 @@ static bool load_selected_rom(void)
    loaded_path = std::string(ROM_DIR) + "/" + roms[selected_rom];
    if (!read_rom(loaded_path))
    {
-      status_line = "Cannot read selected ROM";
+      status_line = localized_read_error();
       return false;
    }
    memset(&info, 0, sizeof(info));
@@ -213,7 +215,7 @@ static bool load_selected_rom(void)
    if (!retro_load_game(&info))
    {
       rom_data.clear();
-      status_line = "Nestopia rejected this ROM";
+      status_line = localized_core_error();
       return false;
    }
    retro_set_controller_port_device(0, RETRO_DEVICE_GAMEPAD);
@@ -421,6 +423,8 @@ struct MenuText
    const char* split_wait;
    const char* gyro_ready;
    const char* gyro_wait;
+   const char* read_error;
+   const char* core_error;
 };
 
 static const MenuText menu_text[] = {
@@ -433,7 +437,8 @@ static const MenuText menu_text[] = {
     "Р’РђР–РќРћ: РџРћР РЇР”РћРљ JOY-CON", "РЎРЅР°С‡Р°Р»Р° СЃРЅРёРјРёС‚Рµ Р›Р•Р’Р«Р™ (РёРіСЂРѕРє 1), Р·Р°С‚РµРј РџР РђР’Р«Р™ (РёРіСЂРѕРє 2).",
     "Р—Р°РїСѓСЃС‚РёС‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ РїРѕСЃР»Рµ РѕС‚СЃРѕРµРґРёРЅРµРЅРёСЏ РѕР±РѕРёС… Joy-Con.", "РЇР—Р«Рљ  L/R", "Р§РЈР’РЎРўР’РРўР•Р›Р¬РќРћРЎРўР¬  в†ђ/в†’", "РЎРџРРЎРћРљ РР“Р  NES",
     "РР“Р Р« РќР• РќРђР™Р”Р•РќР«", "РЎРєРѕРїРёСЂСѓР№С‚Рµ ROM-С„Р°Р№Р»С‹ РІ /switch/gyroduckhunt/roms",
-    "Р РђР—Р”Р•Р›Р•РќРР• Р“РћРўРћР’Рћ", "РџРћР”РљР›Р®Р§РРўР• JOY-CON РћРўР”Р•Р›Р¬РќРћ", "Р“РР РћРЎРљРћРџ Р“РћРўРћР’", "РћР–РР”РђРќРР• Р“РР РћРЎРљРћРџРђ"},
+    "Р РђР—Р”Р•Р›Р•РќРР• Р“РћРўРћР’Рћ", "РџРћР”РљР›Р®Р§РРўР• JOY-CON РћРўР”Р•Р›Р¬РќРћ", "Р“РР РћРЎРљРћРџ Р“РћРўРћР’", "РћР–РР”РђРќРР• Р“РР РћРЎРљРћРџРђ",
+    "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ РІС‹Р±СЂР°РЅРЅСѓСЋ РёРіСЂСѓ", "Nestopia РЅРµ СЃРјРѕРіР»Р° РѕС‚РєСЂС‹С‚СЊ ROM"},
    {"English", "GYRO ZAPPER вЂ” NES GAMES", "NES games with Joy-Con gyro aiming", "CONTROLS",
     "PICK: D-pad up/down; SL or stick click вЂ” play",
     "IN GAME: D-pad/stick move; SL=B; SR=A",
@@ -443,7 +448,8 @@ static const MenuText menu_text[] = {
     "IMPORTANT: JOY-CON ORDER", "Detach LEFT Joy-Con first (player 1), then RIGHT (player 2).",
     "Launch the app after both Joy-Cons are detached.", "LANGUAGE  L/R", "AIM SPEED  в†ђ/в†’", "NES GAME LIST",
     "NO GAMES FOUND", "Copy ROM files to /switch/gyroduckhunt/roms",
-    "SPLIT CONTROLLERS READY", "DETACH JOY-CONS SEPARATELY", "GYRO READY", "WAITING FOR GYRO"},
+    "SPLIT CONTROLLERS READY", "DETACH JOY-CONS SEPARATELY", "GYRO READY", "WAITING FOR GYRO",
+    "Could not read the selected game", "Nestopia could not load this ROM"},
    {"ж—Ґжњ¬иЄћ", "г‚ёгѓЈг‚¤гѓ­г‚¶гѓѓгѓ‘гѓј вЂ” NES", "Joy-ConгЃ®г‚ёгѓЈг‚¤гѓ­гЃ§з…§жє–г‚’ж“ЌдЅњ", "ж“ЌдЅњж–№жі•",
     "йЃёжЉћпјљеЌЃе­—г‚­гѓјдёЉдё‹гЂЃSLгЃѕгЃџгЃЇг‚№гѓ†г‚Јгѓѓг‚ЇжЉјгЃ—иѕјгЃїгЃ§ж±єе®љ",
     "г‚Ігѓјгѓ пјљеЌЃе­—г‚­гѓјпјЏг‚№гѓ†г‚Јгѓѓг‚Їз§»е‹•гЂЃSL=BгЂЃSR=A",
@@ -453,7 +459,8 @@ static const MenuText menu_text[] = {
     "й‡Ќи¦ЃпјљJoy-Conг‚’е¤–гЃ™й †з•Є", "е·¦Joy-Conпј€гѓ—гѓ¬г‚¤гѓ¤гѓј1пј‰г‚’е…€гЃ«гЂЃеЏіJoy-Conпј€гѓ—гѓ¬г‚¤гѓ¤гѓј2пј‰г‚’еѕЊгЃ«е¤–гЃ—гЃѕгЃ™гЂ‚",
     "дёЎж–№г‚’е¤–гЃ—гЃ¦гЃ‹г‚‰г‚ўгѓ—гѓЄг‚’иµ·е‹•гЃ—гЃ¦гЃЏгЃ гЃ•гЃ„гЂ‚", "иЁЂиЄћ  L/R", "з…§жє–йЂџеє¦  в†ђ/в†’", "NESг‚Ігѓјгѓ дёЂи¦§",
     "г‚Ігѓјгѓ гЃЊгЃ‚г‚ЉгЃѕгЃ›г‚“", "/switch/gyroduckhunt/roms гЃ«ROMг‚’г‚ігѓ”гѓјгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„",
-    "е€†й›ўжЋҐз¶љOK", "Joy-Conг‚’еЂ‹е€ҐгЃ«жЋҐз¶љгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„", "г‚ёгѓЈг‚¤гѓ­жє–е‚™OK", "г‚ёгѓЈг‚¤гѓ­еѕ…ж©џдё­"},
+    "е€†й›ўжЋҐз¶љOK", "Joy-Conг‚’еЂ‹е€ҐгЃ«жЋҐз¶љгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„", "г‚ёгѓЈг‚¤гѓ­жє–е‚™OK", "г‚ёгѓЈг‚¤гѓ­еѕ…ж©џдё­",
+    "йЃёжЉћгЃ—гЃџг‚Ігѓјгѓ г‚’иЄ­гЃїиѕјг‚ЃгЃѕгЃ›г‚“", "NestopiaгЃЊгЃ“гЃ®ROMг‚’иЄ­гЃїиѕјг‚ЃгЃѕгЃ›г‚“"},
    {"з®ЂдЅ“дё­ж–‡", "й™Ђићєд»Єе…‰жћЄ вЂ” NES жёёж€Џ", "дЅїз”Ё Joy-Con й™Ђићєд»Єзћ„е‡† NES жёёж€Џ", "жЊ‰й”®иЇґжЋ",
     "йЂ‰ж‹©пјљеЌЃе­—й”®дёЉ/дё‹пј›жЊ‰ SL ж€–ж‘‡жќ†ејЂе§‹",
     "жёёж€Џдё­пјљеЌЃе­—й”®/ж‘‡жќ†з§»еЉЁпј›SL=Bпј›SR=A",
@@ -463,7 +470,8 @@ static const MenuText menu_text[] = {
     "й‡Ќи¦ЃпјљJoy-Con ж‹†еЌёйЎєеєЏ", "е…€ж‹†е·¦ Joy-Conпј€зЋ©е®¶ 1пј‰пјЊе†Ќж‹†еЏі Joy-Conпј€зЋ©е®¶ 2пј‰гЂ‚",
     "дё¤дёЄ Joy-Con йѓЅж‹†дё‹еђЋе†ЌеђЇеЉЁеє”з”ЁгЂ‚", "иЇ­иЁЂ  L/R", "зћ„е‡†йЂџеє¦  в†ђ/в†’", "NES жёёж€Џе€—иЎЁ",
     "жњЄж‰ѕе€°жёёж€Џ", "е°† ROM е¤Ќе€¶е€° /switch/gyroduckhunt/roms",
-    "е€†дЅ“ж‰‹жџ„е·Іе°±з»Є", "иЇ·е€†е€«иїћжЋҐ Joy-Con", "й™Ђићєд»Єе·Іе°±з»Є", "ж­ЈењЁз­‰еѕ…й™Ђићєд»Є"},
+    "е€†дЅ“ж‰‹жџ„е·Іе°±з»Є", "иЇ·е€†е€«иїћжЋҐ Joy-Con", "й™Ђићєд»Єе·Іе°±з»Є", "ж­ЈењЁз­‰еѕ…й™Ђићєд»Є",
+    "ж— жі•иЇ»еЏ–ж‰ЂйЂ‰жёёж€Џ", "Nestopia ж— жі•еЉ иЅЅж­¤ ROM"},
    {"FranГ§ais", "GYRO ZAPPER вЂ” JEUX NES", "Jeux NES visГ©s au gyroscope Joy-Con", "COMMANDES",
     "Choisir : croix haut/bas ; SL ou stick pour jouer",
     "Jeu : croix/stick dГ©placer ; SL=B ; SR=A",
@@ -473,7 +481,8 @@ static const MenuText menu_text[] = {
     "IMPORTANT : ORDRE DES JOY-CON", "DГ©tachez dвЂ™abord le Joy-Con GAUCHE (joueur 1), puis le DROIT (joueur 2).",
     "Lancez lвЂ™application aprГЁs avoir dГ©tachГ© les deux.", "LANGUE  L/R", "VITESSE  в†ђ/в†’", "JEUX NES",
     "AUCUN JEU", "Copiez les ROM dans /switch/gyroduckhunt/roms",
-    "MANETTES SГ‰PARГ‰ES OK", "DГ‰TACHEZ LES JOY-CON", "GYRO PRГЉT", "GYRO EN ATTENTE"},
+    "MANETTES SГ‰PARГ‰ES OK", "DГ‰TACHEZ LES JOY-CON", "GYRO PRГЉT", "GYRO EN ATTENTE",
+    "Impossible de lire le jeu", "Nestopia ne peut pas charger cette ROM"},
    {"EspaГ±ol", "GYRO ZAPPER вЂ” JUEGOS NES", "Apunta con el giroscopio del Joy-Con", "CONTROLES",
     "Elegir: cruceta arriba/abajo; SL o stick para jugar",
     "Juego: cruceta/stick mover; SL=B; SR=A",
@@ -483,7 +492,8 @@ static const MenuText menu_text[] = {
     "IMPORTANTE: ORDEN DE JOY-CON", "Desconecta primero el Joy-Con IZQUIERDO (jugador 1) y luego el DERECHO (jugador 2).",
     "Inicia la aplicaciГіn despuГ©s de desconectar ambos.", "IDIOMA  L/R", "VELOCIDAD  в†ђ/в†’", "JUEGOS NES",
     "NO HAY JUEGOS", "Copia ROM en /switch/gyroduckhunt/roms",
-    "MANDOS SEPARADOS OK", "DESCONECTA LOS JOY-CON", "GIROSCOPIO LISTO", "ESPERANDO GIROSCOPIO"},
+    "MANDOS SEPARADOS OK", "DESCONECTA LOS JOY-CON", "GIROSCOPIO LISTO", "ESPERANDO GIROSCOPIO",
+    "No se puede leer el juego", "Nestopia no pudo cargar esta ROM"},
    {"PortuguГЄs", "GYRO ZAPPER вЂ” JOGOS NES", "Mira com o giroscГіpio do Joy-Con", "CONTROLES",
     "Escolher: direcional cima/baixo; SL ou stick para jogar",
     "Jogo: direcional/stick mover; SL=B; SR=A",
@@ -493,7 +503,8 @@ static const MenuText menu_text[] = {
     "IMPORTANTE: ORDEM DOS JOY-CON", "Remova primeiro o Joy-Con ESQUERDO (jogador 1), depois o DIREITO (jogador 2).",
     "Abra o app depois de remover os dois Joy-Con.", "IDIOMA  L/R", "VELOCIDADE  в†ђ/в†’", "JOGOS NES",
     "NENHUM JOGO", "Copie ROM para /switch/gyroduckhunt/roms",
-    "CONTROLES SEPARADOS OK", "REMOVA OS JOY-CON", "GIROSCГ“PIO PRONTO", "AGUARDANDO GIROSCГ“PIO"},
+    "CONTROLES SEPARADOS OK", "REMOVA OS JOY-CON", "GIROSCГ“PIO PRONTO", "AGUARDANDO GIROSCГ“PIO",
+    "NГЈo foi possГ­vel ler o jogo", "Nestopia nГЈo conseguiu carregar esta ROM"},
    {"Deutsch", "GYRO ZAPPER вЂ” NES-SPIELE", "Zielen mit dem Joy-Con-Gyroskop", "STEUERUNG",
     "WГ¤hlen: Steuerkreuz hoch/runter; SL oder Stick startet",
     "Spiel: Steuerkreuz/Stick bewegen; SL=B; SR=A",
@@ -503,7 +514,8 @@ static const MenuText menu_text[] = {
     "WICHTIG: JOY-CON-REIHENFOLGE", "Zuerst den LINKEN Joy-Con (Spieler 1), danach den RECHTEN (Spieler 2) abnehmen.",
     "App erst starten, wenn beide Joy-Con abgenommen sind.", "SPRACHE  L/R", "TEMPO  в†ђ/в†’", "NES-SPIELE",
     "KEINE SPIELE", "ROM-Dateien nach /switch/gyroduckhunt/roms kopieren",
-    "GETRENNTE CONTROLLER OK", "JOY-CON EINZELN TRENNEN", "GYRO BEREIT", "WARTE AUF GYRO"},
+    "GETRENNTE CONTROLLER OK", "JOY-CON EINZELN TRENNEN", "GYRO BEREIT", "WARTE AUF GYRO",
+    "Spiel kann nicht gelesen werden", "Nestopia konnte diese ROM nicht laden"},
    {"Italiano", "GYRO ZAPPER вЂ” GIOCHI NES", "Mira con il giroscopio Joy-Con", "COMANDI",
     "Scegli: croce su/giГ№; SL o stick per avviare",
     "Gioco: croce/stick muove; SL=B; SR=A",
@@ -513,8 +525,19 @@ static const MenuText menu_text[] = {
     "IMPORTANTE: ORDINE JOY-CON", "Rimuovi prima il Joy-Con SINISTRO (giocatore 1), poi il DESTRO (giocatore 2).",
     "Avvia lвЂ™app dopo aver rimosso entrambi.", "LINGUA  L/R", "VELOCITГЂ  в†ђ/в†’", "GIOCHI NES",
     "NESSUN GIOCO", "Copia le ROM in /switch/gyroduckhunt/roms",
-    "CONTROLLER SEPARATI OK", "COLLEGA I JOY-CON SEPARATI", "GYRO PRONTO", "ATTESA GYRO"}
+    "CONTROLLER SEPARATI OK", "COLLEGA I JOY-CON SEPARATI", "GYRO PRONTO", "ATTESA GYRO",
+    "Impossibile leggere il gioco", "Nestopia non riesce a caricare questa ROM"}
 };
+
+static const char* localized_read_error(void)
+{
+   return menu_text[std::max(0, std::min(8, app_language))].read_error;
+}
+
+static const char* localized_core_error(void)
+{
+   return menu_text[std::max(0, std::min(8, app_language))].core_error;
+}
 
 static void clear_text_cache(void)
 {
