@@ -35,10 +35,12 @@ jobs:
         run: |
           apt-get update
           apt-get install -y fonts-noto-core fonts-noto-cjk
-          mkdir -p standalone/romfs
+          mkdir -p standalone/romfs/licenses
           test -s standalone/icon.jpg
           cp /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf standalone/romfs/
           cp /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc standalone/romfs/
+          cp /usr/share/doc/fonts-noto-core/copyright standalone/romfs/licenses/noto-sans.txt
+          cp /usr/share/doc/fonts-noto-cjk/copyright standalone/romfs/licenses/noto-sans-cjk.txt
           test -s standalone/romfs/NotoSans-Regular.ttf
           test -s standalone/romfs/NotoSansCJK-Regular.ttc
 

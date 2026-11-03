@@ -30,6 +30,8 @@ The app creates `saves/` beside the ROM directory. It does not include ROM files
 
 The localized menu displays the button map, sensitivity and status of the split Joy-Con assignments and right gyro. The camera pointer is attached to Nestopia's port 2 Zapper input. RetroArch's touchscreen overlay and controller-device selection do not take part.
 
+The bundled Noto fonts and their license notices are embedded in the NRO under `romfs/licenses/`.
+
 ## Build
 
 The GitHub Actions workflow builds the NRO using devkitPro/libnx and the Nestopia Switch static core. Run it from the repository's Actions tab with **Build Gyro Zapper NES for Switch в†’ Run workflow**, then download the `gyroduckhunt-switch-homebrew` artifact from the completed run.
