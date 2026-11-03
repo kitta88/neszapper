@@ -25,6 +25,7 @@
 #include "../../config.def.h"
 
 #include "../../retroarch.h"
+#include "../../verbosity.h"
 
 #ifdef HAVE_LIBNX
 #include <switch.h>
