@@ -134,6 +134,7 @@ typedef struct switch_input
    bool mouse_button_right;
    bool mouse_button_middle;
    uint32_t mouse_previous_buttons;
+   bool gyro_aim_active;
 
    /* touch mouse */
    bool touch_mouse_indirect;
@@ -283,8 +284,16 @@ static void switch_input_poll(void *data)
    sw->mouse_x_delta = mouse_state.delta_x;
    sw->mouse_y_delta = mouse_state.delta_y;
 
-   sw->mouse_x       = mouse_state.x;
-   sw->mouse_y       = mouse_state.y;
+   {
+      bool trigger = false;
+      bool recenter = false;
+      sw->gyro_aim_active = switch_joypad_lightgun_state(&trigger, &recenter);
+      if (!sw->gyro_aim_active)
+      {
+         sw->mouse_x = mouse_state.x;
+         sw->mouse_y = mouse_state.y;
+      }
+   }
 
    /* touch mouse events
     * switch_handle_touch_mouse will update sw->mouse_* variables
@@ -879,11 +888,11 @@ static void* switch_input_init(const char *joypad_driver)
       sw->sixaxis_handles_count[i]      = 0;
 
    /* Enable gyro input for the right Joy-Con on pad 2. */
-   hidGetSixAxisSensorHandles(&sw->sixaxis_handles[1][0], 2, 1, HidNpadStyleTag_NpadJoyDual);
-   hidGetSixAxisSensorHandles(&sw->sixaxis_handles[1][2], 1, 1, HidNpadStyleTag_NpadFullKey);
-   for (i = 0; i < 3; i++)
-      hidStartSixAxisSensor(sw->sixaxis_handles[1][i]);
-   sw->sixaxis_handles_count[1] = 3;
+   hidGetSixAxisSensorHandles(&sw->sixaxis_handles[1][0], 1, HidNpadIdType_No2, HidNpadStyleTag_NpadJoyRight);
+   hidStartSixAxisSensor(sw->sixaxis_handles[1][0]);
+   sw->sixaxis_handles_count[1] = 1;
+   sw->mouse_x = MOUSE_MAX_X / 2;
+   sw->mouse_y = MOUSE_MAX_Y / 2;
 #endif
 
    return sw;
