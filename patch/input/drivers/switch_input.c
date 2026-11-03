@@ -135,6 +135,7 @@ typedef struct switch_input
    bool mouse_button_middle;
    uint32_t mouse_previous_buttons;
    bool gyro_aim_active;
+   bool gyro_sensor_started;
 
    /* touch mouse */
    bool touch_mouse_indirect;
@@ -300,7 +301,8 @@ static void switch_input_poll(void *data)
     * depending on touch input gestures
     * see first comment in switch_process_touch_mouse_event() for a list of
     * supported touch gestures */
-   switch_handle_touch_mouse(sw);
+   if (!sw->gyro_aim_active)
+      switch_handle_touch_mouse(sw);
 
    if (sw->mouse_x < 0)
       sw->mouse_x  = 0;
@@ -314,13 +316,26 @@ static void switch_input_poll(void *data)
 
    sw->mouse_wheel = mouse_state.wheel_delta_y;
 
-   /* Right Joy-Con (pad 2) gyro aim, ZR trigger, Minus + stick recenter. */
+   /* Right Joy-Con (pad 2) gyro aim, ZR trigger, Plus + stick recenter. */
    {
       bool trigger = false;
       bool recenter = false;
       if (switch_joypad_lightgun_state(&trigger, &recenter))
       {
          sw->mouse_button_left = trigger;
+         if (!sw->gyro_sensor_started)
+         {
+            if (R_SUCCEEDED(hidGetSixAxisSensorHandles(
+                     &sw->sixaxis_handles[1][0], 1, HidNpadIdType_No2,
+                     HidNpadStyleTag_NpadJoyRight)))
+            {
+               if (R_SUCCEEDED(hidStartSixAxisSensor(sw->sixaxis_handles[1][0])))
+               {
+                  sw->sixaxis_handles_count[1] = 1;
+                  sw->gyro_sensor_started = true;
+               }
+            }
+         }
          if (recenter)
          {
             sw->mouse_x = MOUSE_MAX_X / 2;
@@ -887,10 +902,7 @@ static void* switch_input_init(const char *joypad_driver)
    for (i = 0; i < DEFAULT_MAX_PADS; i++)
       sw->sixaxis_handles_count[i]      = 0;
 
-   /* Enable gyro input for the right Joy-Con on pad 2. */
-   hidGetSixAxisSensorHandles(&sw->sixaxis_handles[1][0], 1, HidNpadIdType_No2, HidNpadStyleTag_NpadJoyRight);
-   hidStartSixAxisSensor(sw->sixaxis_handles[1][0]);
-   sw->sixaxis_handles_count[1] = 1;
+   /* Begin at screen center; activate the right Joy-Con gyro after pad setup. */
    sw->mouse_x = MOUSE_MAX_X / 2;
    sw->mouse_y = MOUSE_MAX_Y / 2;
 #endif
