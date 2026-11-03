@@ -25,10 +25,19 @@ jobs:
           ref: v1.22.1
           path: retroarch
 
-      - name: Apply Switch input changes
+      - name: Verify pinned source and patch
+        run: |
+          grep -F '#define PACKAGE_VERSION "1.22.1"' retroarch/version.all
+          grep -F '[Switch Zapper] patched gyro mouse driver active on pad 2' patch/input/drivers/switch_input.c
+          grep -F 'switch_joypad_lightgun_state' patch/input/drivers_joypad/switch_joypad.c
+          echo "RetroArch source revision: $(git -C retroarch rev-parse HEAD)"
+
+      - name: Apply and verify Switch input changes
         run: |
           cp patch/input/drivers/switch_input.c retroarch/input/drivers/switch_input.c
           cp patch/input/drivers_joypad/switch_joypad.c retroarch/input/drivers_joypad/switch_joypad.c
+          cmp patch/input/drivers/switch_input.c retroarch/input/drivers/switch_input.c
+          cmp patch/input/drivers_joypad/switch_joypad.c retroarch/input/drivers_joypad/switch_joypad.c
 
       - name: Check out Nestopia core
         uses: actions/checkout@v4
@@ -47,10 +56,14 @@ jobs:
         working-directory: retroarch
         run: |
           make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" clean
-          make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Gyro Zapper TEST"
+          make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Gyro Zapper 1.22.1 TEST"
+          test -s retroarch_switch.nro
+          grep -aFq '[Switch Zapper] patched gyro mouse driver active on pad 2' retroarch_switch.nro
+          grep -aFq '1.22.1' retroarch_switch.nro
+          sha256sum retroarch_switch.nro
 
       - uses: actions/upload-artifact@v4
         with:
-          name: retroarch-1.22.1-switch-nestopia-diagnostics
+          name: retroarch-1.22.1-switch-nestopia-verified
           path: retroarch/retroarch_switch.nro
           if-no-files-found: error
