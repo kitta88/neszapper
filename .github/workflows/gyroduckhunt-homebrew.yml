@@ -26,7 +26,18 @@ jobs:
           if [ ! -x "$DEVKITPRO/portlibs/switch/bin/sdl2-config" ]; then
             dkp-pacman -Sy --noconfirm switch-sdl2
           fi
+          dkp-pacman -Sy --noconfirm switch-sdl2_ttf
           "$DEVKITPRO/portlibs/switch/bin/sdl2-config" --version
+
+      - name: Install multilingual UI fonts
+        run: |
+          apt-get update
+          apt-get install -y fonts-noto-core fonts-noto-cjk
+          mkdir -p standalone/romfs
+          cp /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf standalone/romfs/
+          cp /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc standalone/romfs/
+          test -s standalone/romfs/NotoSans-Regular.ttf
+          test -s standalone/romfs/NotoSansCJK-Regular.ttc
 
       - name: Check out Nestopia core
         uses: actions/checkout@v4

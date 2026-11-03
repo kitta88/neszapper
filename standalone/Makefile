@@ -11,6 +11,7 @@ TARGET      := gyroduckhunt
 BUILD       := build
 SOURCES     := source
 DATA        :=
+ROMFS       := romfs
 INCLUDES    := ../nestopia/libretro/libretro-common/include
 APP_TITLE   := Gyro Zapper NES
 APP_AUTHOR  := Kitta88
@@ -26,7 +27,7 @@ CXXFLAGS    := $(CFLAGS) $(foreach dir,$(INCLUDES),-I$(TOPDIR)/$(dir)) \
                -D_REENTRANT -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := -g $(ARCH)
 LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH)
-LIBS        := $(shell $(DEVKITPRO)/portlibs/switch/bin/sdl2-config --libs) -lnestopia \
+LIBS        := $(shell $(DEVKITPRO)/portlibs/switch/bin/sdl2-config --libs) -lSDL2_ttf -lnestopia \
                -lbz2 -lz -llzma -lm -lstdc++ -lpthread -lEGL -lGLESv2 \
                -lglapi -ldrm_nouveau -lnx
 ifneq ($(BUILD),$(notdir $(CURDIR)))
@@ -47,6 +48,7 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib) -L$(TOPDIR)
 export APP_TITLE APP_AUTHOR APP_VERSION NO_ICON
+export NROFLAGS += --romfsdir=$(TOPDIR)/$(ROMFS)
 
 .PHONY: all clean $(BUILD)
 all: $(BUILD)

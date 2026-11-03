@@ -1,6 +1,7 @@
 #define SDL_MAIN_HANDLED
 #include <switch.h>
 #include <SDL.h>
+#include <SDL_ttf.h>
 #include <libretro.h>
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <dirent.h>
 #include <string>
 #include <strings.h>
+#include <unordered_map>
 #include <vector>
 #include <sys/stat.h>
 
@@ -42,7 +44,7 @@ static const int SCREEN_W = 1280;
 static const int SCREEN_H = 720;
 static const int GAME_W = 256;
 static const int GAME_H = 240;
-static const float GYRO_GAIN = 31290.0f;
+static const float GYRO_GAIN = 93870.0f;
 static const int DEFAULT_AIM_SENSITIVITY = 20;
 static const int MIN_AIM_SENSITIVITY = 1;
 static const int MAX_AIM_SENSITIVITY = 20;
@@ -51,6 +53,7 @@ static const unsigned MAX_ROMS = 256;
 static SDL_Window* window_handle = nullptr;
 static SDL_Renderer* renderer = nullptr;
 static SDL_Texture* game_texture = nullptr;
+static TTF_Font* ui_font = nullptr;
 static SDL_AudioDeviceID audio_device = 0;
 static PadState pads[2];
 static HidSixAxisSensorHandle gyro_handle;
@@ -77,10 +80,15 @@ static uint64_t previous_right_buttons = 0;
 static HidAnalogStickState left_stick = {};
 static unsigned split_retry_frames = 0;
 static int aim_sensitivity = DEFAULT_AIM_SENSITIVITY;
+static int app_language = 0;
 static unsigned core_width = GAME_W;
 static unsigned core_height = GAME_H;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
 static std::string status_line;
+static std::unordered_map<std::string, SDL_Texture*> text_cache;
+
+static const char* const LATIN_FONT_PATH = "romfs:/NotoSans-Regular.ttf";
+static const char* const CJK_FONT_PATH = "romfs:/NotoSansCJK-Regular.ttc";
 
 static int16_t pointer_axis(int value)
 {
@@ -137,20 +145,23 @@ static void save_settings(void);
 static void load_settings(void)
 {
    FILE* f = fopen(CONFIG_PATH, "r");
-   int version, value;
+   int version, value, language = 0;
    if (!f)
       return;
-   if (fscanf(f, "%d %d", &version, &value) == 2 && version == 2)
+   int fields = fscanf(f, "%d %d %d", &version, &value, &language);
+   if (fields >= 2 && (version == 2 || version == 3))
+   {
       aim_sensitivity = std::max(MIN_AIM_SENSITIVITY,
             std::min(MAX_AIM_SENSITIVITY, value));
+      if (version == 3 && fields == 3)
+         app_language = std::max(0, std::min(8, language));
+   }
    else
    {
       aim_sensitivity = DEFAULT_AIM_SENSITIVITY;
-      fclose(f);
-      save_settings();
-      return;
    }
    fclose(f);
+   save_settings();
 }
 
 static void save_settings(void)
@@ -158,7 +169,7 @@ static void save_settings(void)
    FILE* f = fopen(CONFIG_PATH, "w");
    if (!f)
       return;
-   fprintf(f, "2 %d\n", aim_sensitivity);
+   fprintf(f, "3 %d %d\n", aim_sensitivity, app_language);
    fclose(f);
 }
 
@@ -387,65 +398,181 @@ static void video_refresh(const void* data, unsigned width, unsigned height, siz
    SDL_RenderPresent(renderer);
 }
 
-static const uint8_t font[36][5] = {
-   {0x7e,0x11,0x11,0x11,0x7e},{0x7f,0x49,0x49,0x49,0x36},
-   {0x3e,0x41,0x41,0x41,0x22},{0x7f,0x41,0x41,0x22,0x1c},
-   {0x7f,0x49,0x49,0x49,0x41},{0x7f,0x09,0x09,0x09,0x01},
-   {0x3e,0x41,0x49,0x49,0x7a},{0x7f,0x08,0x08,0x08,0x7f},
-   {0x00,0x41,0x7f,0x41,0x00},{0x20,0x40,0x41,0x3f,0x01},
-   {0x7f,0x08,0x14,0x22,0x41},{0x7f,0x40,0x40,0x40,0x40},
-   {0x7f,0x02,0x0c,0x02,0x7f},{0x7f,0x04,0x08,0x10,0x7f},
-   {0x3e,0x41,0x41,0x41,0x3e},{0x7f,0x09,0x09,0x09,0x06},
-   {0x3e,0x41,0x51,0x21,0x5e},{0x7f,0x09,0x19,0x29,0x46},
-   {0x46,0x49,0x49,0x49,0x31},{0x01,0x01,0x7f,0x01,0x01},
-   {0x3f,0x40,0x40,0x40,0x3f},{0x1f,0x20,0x40,0x20,0x1f},
-   {0x3f,0x40,0x38,0x40,0x3f},{0x63,0x14,0x08,0x14,0x63},
-   {0x07,0x08,0x70,0x08,0x07},{0x61,0x51,0x49,0x45,0x43},
-   {0x3e,0x51,0x49,0x45,0x3e},{0x00,0x42,0x7f,0x40,0x00},
-   {0x42,0x61,0x51,0x49,0x46},{0x21,0x41,0x45,0x4b,0x31},
-   {0x18,0x14,0x12,0x7f,0x10},{0x27,0x45,0x45,0x45,0x39},
-   {0x3c,0x4a,0x49,0x49,0x30},{0x01,0x71,0x09,0x05,0x03},
-   {0x36,0x49,0x49,0x49,0x36},{0x06,0x49,0x49,0x29,0x1e},
+struct MenuText
+{
+   const char* language_name;
+   const char* title;
+   const char* subtitle;
+   const char* controls_title;
+   const char* controls1;
+   const char* controls2;
+   const char* controls3;
+   const char* controls4;
+   const char* controls5;
+   const char* warning_title;
+   const char* warning1;
+   const char* warning2;
+   const char* language_label;
+   const char* sensitivity_label;
+   const char* roms_title;
+   const char* no_roms;
+   const char* copy_roms;
+   const char* split_ready;
+   const char* split_wait;
+   const char* gyro_ready;
+   const char* gyro_wait;
 };
 
-static void draw_text(int x, int y, const std::string& text, int scale, SDL_Color color)
+static const MenuText menu_text[] = {
+   {"Р СѓСЃСЃРєРёР№", "GYRO ZAPPER вЂ” РР“Р Р« NES", "РРіСЂС‹ NES СЃ РїСЂРёС†РµР»РёРІР°РЅРёРµРј РіРёСЂРѕСЃРєРѕРїРѕРј Joy-Con", "РљРќРћРџРљР Р РЈРџР РђР’Р›Р•РќРР•",
+    "Р’Р«Р‘РћР : РєСЂРµСЃС‚РѕРІРёРЅР° РІРІРµСЂС…/РІРЅРёР·; SL РёР»Рё СЃС‚РёРє вЂ” РёРіСЂР°С‚СЊ",
+    "Р’ РР“Р Р•: РєСЂРµСЃС‚РѕРІРёРЅР°/СЃС‚РёРє вЂ” С…РѕРґСЊР±Р°; SL=B; SR=A",
+    "ZL/L вЂ” Turbo B/A; СЃС‚РёРє=START; MINUS=SELECT",
+    "РџР РђР’Р«Р™ JOY-CON: РіРёСЂРѕРїСЂРёС†РµР»; ZR вЂ” РІС‹СЃС‚СЂРµР»",
+    "PLUS вЂ” С†РµРЅС‚СЂ РїСЂРёС†РµР»Р°; MINUS+SL вЂ” Рє СЃРїРёСЃРєСѓ РёРіСЂ",
+    "Р’РђР–РќРћ: РџРћР РЇР”РћРљ JOY-CON", "РЎРЅР°С‡Р°Р»Р° СЃРЅРёРјРёС‚Рµ Р›Р•Р’Р«Р™ (РёРіСЂРѕРє 1), Р·Р°С‚РµРј РџР РђР’Р«Р™ (РёРіСЂРѕРє 2).",
+    "Р—Р°РїСѓСЃС‚РёС‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ РїРѕСЃР»Рµ РѕС‚СЃРѕРµРґРёРЅРµРЅРёСЏ РѕР±РѕРёС… Joy-Con.", "РЇР—Р«Рљ  L/R", "Р§РЈР’РЎРўР’РРўР•Р›Р¬РќРћРЎРўР¬  в†ђ/в†’", "РЎРџРРЎРћРљ РР“Р  NES",
+    "РР“Р Р« РќР• РќРђР™Р”Р•РќР«", "РЎРєРѕРїРёСЂСѓР№С‚Рµ ROM-С„Р°Р№Р»С‹ РІ /switch/gyroduckhunt/roms",
+    "Р РђР—Р”Р•Р›Р•РќРР• Р“РћРўРћР’Рћ", "РџРћР”РљР›Р®Р§РРўР• JOY-CON РћРўР”Р•Р›Р¬РќРћ", "Р“РР РћРЎРљРћРџ Р“РћРўРћР’", "РћР–РР”РђРќРР• Р“РР РћРЎРљРћРџРђ"},
+   {"English", "GYRO ZAPPER вЂ” NES GAMES", "NES games with Joy-Con gyro aiming", "CONTROLS",
+    "PICK: D-pad up/down; SL or stick click вЂ” play",
+    "IN GAME: D-pad/stick move; SL=B; SR=A",
+    "ZL/L вЂ” Turbo B/A; stick=START; MINUS=SELECT",
+    "RIGHT JOY-CON: gyro aim; ZR вЂ” fire",
+    "PLUS вЂ” recenter; MINUS+SL вЂ” return to game list",
+    "IMPORTANT: JOY-CON ORDER", "Detach LEFT Joy-Con first (player 1), then RIGHT (player 2).",
+    "Launch the app after both Joy-Cons are detached.", "LANGUAGE  L/R", "AIM SPEED  в†ђ/в†’", "NES GAME LIST",
+    "NO GAMES FOUND", "Copy ROM files to /switch/gyroduckhunt/roms",
+    "SPLIT CONTROLLERS READY", "DETACH JOY-CONS SEPARATELY", "GYRO READY", "WAITING FOR GYRO"},
+   {"ж—Ґжњ¬иЄћ", "г‚ёгѓЈг‚¤гѓ­г‚¶гѓѓгѓ‘гѓј вЂ” NES", "Joy-ConгЃ®г‚ёгѓЈг‚¤гѓ­гЃ§з…§жє–г‚’ж“ЌдЅњ", "ж“ЌдЅњж–№жі•",
+    "йЃёжЉћпјљеЌЃе­—г‚­гѓјдёЉдё‹гЂЃSLгЃѕгЃџгЃЇг‚№гѓ†г‚Јгѓѓг‚ЇжЉјгЃ—иѕјгЃїгЃ§ж±єе®љ",
+    "г‚Ігѓјгѓ пјљеЌЃе­—г‚­гѓјпјЏг‚№гѓ†г‚Јгѓѓг‚Їз§»е‹•гЂЃSL=BгЂЃSR=A",
+    "ZL/LпјљйЂЈе°„B/AгЂЃг‚№гѓ†г‚Јгѓѓг‚ЇжЉјгЃ—иѕјгЃї=STARTгЂЃMINUS=SELECT",
+    "еЏіJoy-Conпјљг‚ёгѓЈг‚¤гѓ­з…§жє–гЂЃZRгЃ§з™єе°„",
+    "PLUSгЃ§з…§жє–г‚’дё­е¤®гЃёгЂЃMINUS+SLгЃ§г‚Ігѓјгѓ дёЂи¦§гЃё",
+    "й‡Ќи¦ЃпјљJoy-Conг‚’е¤–гЃ™й †з•Є", "е·¦Joy-Conпј€гѓ—гѓ¬г‚¤гѓ¤гѓј1пј‰г‚’е…€гЃ«гЂЃеЏіJoy-Conпј€гѓ—гѓ¬г‚¤гѓ¤гѓј2пј‰г‚’еѕЊгЃ«е¤–гЃ—гЃѕгЃ™гЂ‚",
+    "дёЎж–№г‚’е¤–гЃ—гЃ¦гЃ‹г‚‰г‚ўгѓ—гѓЄг‚’иµ·е‹•гЃ—гЃ¦гЃЏгЃ гЃ•гЃ„гЂ‚", "иЁЂиЄћ  L/R", "з…§жє–йЂџеє¦  в†ђ/в†’", "NESг‚Ігѓјгѓ дёЂи¦§",
+    "г‚Ігѓјгѓ гЃЊгЃ‚г‚ЉгЃѕгЃ›г‚“", "/switch/gyroduckhunt/roms гЃ«ROMг‚’г‚ігѓ”гѓјгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„",
+    "е€†й›ўжЋҐз¶љOK", "Joy-Conг‚’еЂ‹е€ҐгЃ«жЋҐз¶љгЃ—гЃ¦гЃЏгЃ гЃ•гЃ„", "г‚ёгѓЈг‚¤гѓ­жє–е‚™OK", "г‚ёгѓЈг‚¤гѓ­еѕ…ж©џдё­"},
+   {"з®ЂдЅ“дё­ж–‡", "й™Ђићєд»Єе…‰жћЄ вЂ” NES жёёж€Џ", "дЅїз”Ё Joy-Con й™Ђићєд»Єзћ„е‡† NES жёёж€Џ", "жЊ‰й”®иЇґжЋ",
+    "йЂ‰ж‹©пјљеЌЃе­—й”®дёЉ/дё‹пј›жЊ‰ SL ж€–ж‘‡жќ†ејЂе§‹",
+    "жёёж€Џдё­пјљеЌЃе­—й”®/ж‘‡жќ†з§»еЉЁпј›SL=Bпј›SR=A",
+    "ZL/LпјљиїћеЏ‘ B/Aпј›ж‘‡жќ†жЊ‰дё‹=STARTпј›MINUS=SELECT",
+    "еЏі Joy-Conпјљй™Ђићєд»Єзћ„е‡†пј›ZR ејЂзЃ«",
+    "PLUS й‡Ќж–°е±…дё­пј›MINUS+SL иї”е›ћжёёж€Џе€—иЎЁ",
+    "й‡Ќи¦ЃпјљJoy-Con ж‹†еЌёйЎєеєЏ", "е…€ж‹†е·¦ Joy-Conпј€зЋ©е®¶ 1пј‰пјЊе†Ќж‹†еЏі Joy-Conпј€зЋ©е®¶ 2пј‰гЂ‚",
+    "дё¤дёЄ Joy-Con йѓЅж‹†дё‹еђЋе†ЌеђЇеЉЁеє”з”ЁгЂ‚", "иЇ­иЁЂ  L/R", "зћ„е‡†йЂџеє¦  в†ђ/в†’", "NES жёёж€Џе€—иЎЁ",
+    "жњЄж‰ѕе€°жёёж€Џ", "е°† ROM е¤Ќе€¶е€° /switch/gyroduckhunt/roms",
+    "е€†дЅ“ж‰‹жџ„е·Іе°±з»Є", "иЇ·е€†е€«иїћжЋҐ Joy-Con", "й™Ђићєд»Єе·Іе°±з»Є", "ж­ЈењЁз­‰еѕ…й™Ђићєд»Є"},
+   {"FranГ§ais", "GYRO ZAPPER вЂ” JEUX NES", "Jeux NES visГ©s au gyroscope Joy-Con", "COMMANDES",
+    "Choisir : croix haut/bas ; SL ou stick pour jouer",
+    "Jeu : croix/stick dГ©placer ; SL=B ; SR=A",
+    "ZL/L : Turbo B/A ; stick=START ; MINUS=SELECT",
+    "JOY-CON DROIT : visГ©e gyro ; ZR вЂ” tirer",
+    "PLUS recentre ; MINUS+SL revient Г  la liste",
+    "IMPORTANT : ORDRE DES JOY-CON", "DГ©tachez dвЂ™abord le Joy-Con GAUCHE (joueur 1), puis le DROIT (joueur 2).",
+    "Lancez lвЂ™application aprГЁs avoir dГ©tachГ© les deux.", "LANGUE  L/R", "VITESSE  в†ђ/в†’", "JEUX NES",
+    "AUCUN JEU", "Copiez les ROM dans /switch/gyroduckhunt/roms",
+    "MANETTES SГ‰PARГ‰ES OK", "DГ‰TACHEZ LES JOY-CON", "GYRO PRГЉT", "GYRO EN ATTENTE"},
+   {"EspaГ±ol", "GYRO ZAPPER вЂ” JUEGOS NES", "Apunta con el giroscopio del Joy-Con", "CONTROLES",
+    "Elegir: cruceta arriba/abajo; SL o stick para jugar",
+    "Juego: cruceta/stick mover; SL=B; SR=A",
+    "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
+    "JOY-CON DERECHO: mira giroscГіpica; ZR dispara",
+    "PLUS centra la mira; MINUS+SL vuelve a la lista",
+    "IMPORTANTE: ORDEN DE JOY-CON", "Desconecta primero el Joy-Con IZQUIERDO (jugador 1) y luego el DERECHO (jugador 2).",
+    "Inicia la aplicaciГіn despuГ©s de desconectar ambos.", "IDIOMA  L/R", "VELOCIDAD  в†ђ/в†’", "JUEGOS NES",
+    "NO HAY JUEGOS", "Copia ROM en /switch/gyroduckhunt/roms",
+    "MANDOS SEPARADOS OK", "DESCONECTA LOS JOY-CON", "GIROSCOPIO LISTO", "ESPERANDO GIROSCOPIO"},
+   {"PortuguГЄs", "GYRO ZAPPER вЂ” JOGOS NES", "Mira com o giroscГіpio do Joy-Con", "CONTROLES",
+    "Escolher: direcional cima/baixo; SL ou stick para jogar",
+    "Jogo: direcional/stick mover; SL=B; SR=A",
+    "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
+    "JOY-CON DIREITO: mira giroscГіpica; ZR atira",
+    "PLUS centraliza; MINUS+SL volta Г  lista",
+    "IMPORTANTE: ORDEM DOS JOY-CON", "Remova primeiro o Joy-Con ESQUERDO (jogador 1), depois o DIREITO (jogador 2).",
+    "Abra o app depois de remover os dois Joy-Con.", "IDIOMA  L/R", "VELOCIDADE  в†ђ/в†’", "JOGOS NES",
+    "NENHUM JOGO", "Copie ROM para /switch/gyroduckhunt/roms",
+    "CONTROLES SEPARADOS OK", "REMOVA OS JOY-CON", "GIROSCГ“PIO PRONTO", "AGUARDANDO GIROSCГ“PIO"},
+   {"Deutsch", "GYRO ZAPPER вЂ” NES-SPIELE", "Zielen mit dem Joy-Con-Gyroskop", "STEUERUNG",
+    "WГ¤hlen: Steuerkreuz hoch/runter; SL oder Stick startet",
+    "Spiel: Steuerkreuz/Stick bewegen; SL=B; SR=A",
+    "ZL/L: Turbo B/A; Stick=START; MINUS=SELECT",
+    "RECHTER JOY-CON: Gyro-Ziel; ZR feuert",
+    "PLUS zentriert; MINUS+SL zurГјck zur Spieleliste",
+    "WICHTIG: JOY-CON-REIHENFOLGE", "Zuerst den LINKEN Joy-Con (Spieler 1), danach den RECHTEN (Spieler 2) abnehmen.",
+    "App erst starten, wenn beide Joy-Con abgenommen sind.", "SPRACHE  L/R", "TEMPO  в†ђ/в†’", "NES-SPIELE",
+    "KEINE SPIELE", "ROM-Dateien nach /switch/gyroduckhunt/roms kopieren",
+    "GETRENNTE CONTROLLER OK", "JOY-CON EINZELN TRENNEN", "GYRO BEREIT", "WARTE AUF GYRO"},
+   {"Italiano", "GYRO ZAPPER вЂ” GIOCHI NES", "Mira con il giroscopio Joy-Con", "COMANDI",
+    "Scegli: croce su/giГ№; SL o stick per avviare",
+    "Gioco: croce/stick muove; SL=B; SR=A",
+    "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
+    "JOY-CON DESTRO: mira gyro; ZR spara",
+    "PLUS centra; MINUS+SL torna alla lista giochi",
+    "IMPORTANTE: ORDINE JOY-CON", "Rimuovi prima il Joy-Con SINISTRO (giocatore 1), poi il DESTRO (giocatore 2).",
+    "Avvia lвЂ™app dopo aver rimosso entrambi.", "LINGUA  L/R", "VELOCITГЂ  в†ђ/в†’", "GIOCHI NES",
+    "NESSUN GIOCO", "Copia le ROM in /switch/gyroduckhunt/roms",
+    "CONTROLLER SEPARATI OK", "COLLEGA I JOY-CON SEPARATI", "GYRO PRONTO", "ATTESA GYRO"}
+};
+
+static void clear_text_cache(void)
 {
-   SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-   for (char raw : text)
+   for (auto& item : text_cache)
+      SDL_DestroyTexture(item.second);
+   text_cache.clear();
+}
+
+static void close_ui_font(void)
+{
+   clear_text_cache();
+   if (ui_font)
+      TTF_CloseFont(ui_font);
+   ui_font = nullptr;
+}
+
+static bool open_ui_font(void)
+{
+   close_ui_font();
+   if (app_language == 2 || app_language == 3)
    {
-      char c = (char)std::toupper((unsigned char)raw);
-      int idx = (c >= 'A' && c <= 'Z') ? c - 'A' :
-         (c >= '0' && c <= '9') ? 26 + c - '0' : -1;
-      if (idx >= 0)
-      {
-         for (int col = 0; col < 5; col++)
-            for (int row = 0; row < 7; row++)
-               if (font[idx][col] & (1 << row))
-               {
-                  SDL_Rect pixel = { x + col * scale, y + row * scale, scale, scale };
-                  SDL_RenderFillRect(renderer, &pixel);
-               }
-      }
-      else if (c == '-')
-      {
-         SDL_Rect pixel = { x, y + 3 * scale, 4 * scale, scale };
-         SDL_RenderFillRect(renderer, &pixel);
-      }
-      else if (c == '.')
-      {
-         SDL_Rect pixel = { x + 2 * scale, y + 6 * scale, scale, scale };
-         SDL_RenderFillRect(renderer, &pixel);
-      }
-      else if (c == '/')
-      {
-         for (int i = 0; i < 7; i++)
-         {
-            SDL_Rect pixel = { x + (4 - i / 2) * scale, y + i * scale, scale, scale };
-            SDL_RenderFillRect(renderer, &pixel);
-         }
-      }
-      x += 6 * scale;
+      int index = app_language == 2 ? 0 : 2;
+      ui_font = TTF_OpenFontIndex(CJK_FONT_PATH, 24, index);
    }
+   else
+      ui_font = TTF_OpenFont(LATIN_FONT_PATH, 24);
+   return ui_font != nullptr;
+}
+
+static void draw_text(int x, int y, const std::string& text, int size, SDL_Color color,
+      int max_width = 1180)
+{
+   if (!ui_font || text.empty())
+      return;
+   std::string key = text;
+   key.push_back((char)size);
+   key.push_back((char)color.r);
+   key.push_back((char)color.g);
+   key.push_back((char)color.b);
+   key.append((const char*)&max_width, sizeof(max_width));
+   auto found = text_cache.find(key);
+   if (found == text_cache.end())
+   {
+      TTF_SetFontSize(ui_font, size);
+      SDL_Surface* surface = TTF_RenderUTF8_Blended_Wrapped(
+            ui_font, text.c_str(), color, (Uint32)max_width);
+      if (!surface)
+         return;
+      SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+      SDL_FreeSurface(surface);
+      if (!texture)
+         return;
+      found = text_cache.emplace(key, texture).first;
+   }
+   int width = 0, height = 0;
+   SDL_QueryTexture(found->second, nullptr, nullptr, &width, &height);
+   SDL_Rect dst = { x, y, width, height };
+   SDL_RenderCopy(renderer, found->second, nullptr, &dst);
 }
 
 static std::string short_name(std::string name)
@@ -454,53 +581,110 @@ static std::string short_name(std::string name)
    if (dot != std::string::npos)
       name.resize(dot);
    if (name.size() > 28)
-      name = name.substr(0, 25) + "...";
+   {
+      size_t end = 25;
+      while (end > 0 && (((unsigned char)name[end] & 0xc0) == 0x80))
+         end--;
+      name = name.substr(0, end) + "...";
+   }
    return name;
 }
 
 static void render_menu(void)
 {
-   SDL_SetRenderDrawColor(renderer, 10, 14, 22, 255);
+   const MenuText& t = menu_text[app_language];
+   SDL_SetRenderDrawColor(renderer, 6, 10, 18, 255);
    SDL_RenderClear(renderer);
    SDL_Color white = { 240, 245, 255, 255 };
    SDL_Color cyan = { 80, 220, 255, 255 };
-   draw_text(64, 36, "GYRO ZAPPER - SELECT NES ROM", 3, cyan);
-   draw_text(64, 74, "P1 LEFT JOY-CON: UP/DOWN PICK   SL/STICK: PLAY", 2, white);
-   draw_text(64, 100, "D-PAD/STICK: MOVE   SL: NES B   SR: NES A", 2, white);
-   draw_text(64, 126, "ZL: TURBO B   L: TURBO A   STICK: START   MINUS: SELECT", 2, white);
-   draw_text(64, 158, "P2 RIGHT JOY-CON: GYRO AIM   ZR: FIRE", 2, white);
-   draw_text(64, 184, "PLUS: RECENTER (OR + R STICK)   MINUS + SL: ROM LIST", 2, white);
-   draw_text(64, 210, split_joycons_ready ? "LEFT P1 / RIGHT P2 SPLIT READY" : "SET LEFT P1 AND RIGHT P2 AS SEPARATE JOY-CONS", 2,
+   SDL_Color muted = { 171, 190, 215, 255 };
+   SDL_Color panel = { 16, 27, 43, 255 };
+   SDL_Color border = { 40, 78, 107, 255 };
+   SDL_Rect card = { 38, 28, 1204, 664 };
+   SDL_SetRenderDrawColor(renderer, panel.r, panel.g, panel.b, panel.a);
+   SDL_RenderFillRect(renderer, &card);
+   SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+   SDL_RenderDrawRect(renderer, &card);
+   SDL_Rect header = { 39, 29, 1202, 104 };
+   SDL_SetRenderDrawColor(renderer, 11, 39, 61, 255);
+   SDL_RenderFillRect(renderer, &header);
+   draw_text(64, 47, t.title, 32, cyan);
+   draw_text(66, 91, t.subtitle, 18, muted);
+
+   /* Retro target and zapper silhouette as lightweight SDL artwork. */
+   SDL_SetRenderDrawColor(renderer, 255, 88, 90, 255);
+   for (int r = 12; r <= 42; r += 15)
+   {
+      SDL_Rect ring = { 1118 - r, 80 - r, r * 2, r * 2 };
+      SDL_RenderDrawRect(renderer, &ring);
+   }
+   SDL_RenderDrawLine(renderer, 1066, 80, 1170, 80);
+   SDL_RenderDrawLine(renderer, 1118, 28, 1118, 132);
+   SDL_SetRenderDrawColor(renderer, 83, 172, 202, 255);
+   SDL_Rect gun_barrel = { 1040, 107, 78, 18 };
+   SDL_Rect gun_grip = { 1082, 123, 23, 41 };
+   SDL_RenderFillRect(renderer, &gun_barrel);
+   SDL_RenderFillRect(renderer, &gun_grip);
+   SDL_SetRenderDrawColor(renderer, 13, 48, 69, 255);
+   SDL_Rect gun_highlight = { 1046, 112, 63, 6 };
+   SDL_RenderFillRect(renderer, &gun_highlight);
+
+   SDL_Rect controls = { 54, 151, 712, 193 };
+   SDL_Rect warning = { 784, 151, 442, 193 };
+   SDL_SetRenderDrawColor(renderer, 11, 19, 32, 255);
+   SDL_RenderFillRect(renderer, &controls);
+   SDL_RenderFillRect(renderer, &warning);
+   SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+   SDL_RenderDrawRect(renderer, &controls);
+   SDL_RenderDrawRect(renderer, &warning);
+   draw_text(72, 164, t.controls_title, 21, cyan);
+   draw_text(72, 195, t.controls1, 17, white, 675);
+   draw_text(72, 222, t.controls2, 17, white, 675);
+   draw_text(72, 249, t.controls3, 17, white, 675);
+   draw_text(72, 276, t.controls4, 17, white, 675);
+   draw_text(72, 312, t.controls5, 17, muted);
+   draw_text(802, 164, t.warning_title, 19, SDL_Color{255, 190, 94, 255});
+   draw_text(802, 202, t.warning1, 15, white, 402);
+   draw_text(802, 244, t.warning2, 15, white, 402);
+   draw_text(802, 285, t.language_label, 17, cyan);
+   draw_text(1004, 285, menu_text[app_language].language_name, 19, white);
+
+   SDL_Rect settings = { 54, 357, 1172, 59 };
+   SDL_SetRenderDrawColor(renderer, 11, 19, 32, 255);
+   SDL_RenderFillRect(renderer, &settings);
+   SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+   SDL_RenderDrawRect(renderer, &settings);
+   char sensitivity[96];
+   snprintf(sensitivity, sizeof(sensitivity), "%s: %dX", t.sensitivity_label, aim_sensitivity);
+   draw_text(72, 374, sensitivity, 19, cyan);
+   draw_text(602, 376, t.roms_title, 19, white);
+   draw_text(980, 374, split_joycons_ready ? t.split_ready : t.split_wait, 14,
          split_joycons_ready ? cyan : SDL_Color{255, 180, 80, 255});
-   draw_text(920, 210, gyro_ready ? "GYRO OK" : "GYRO WAIT", 2,
+   draw_text(980, 396, gyro_ready ? t.gyro_ready : t.gyro_wait, 14,
          gyro_ready ? cyan : SDL_Color{255, 100, 80, 255});
-   char sensitivity_label[64];
-   snprintf(sensitivity_label, sizeof(sensitivity_label),
-         "AIM SENSITIVITY: %dX   LEFT/RIGHT: ADJUST", aim_sensitivity);
-   draw_text(64, 236, sensitivity_label, 2, cyan);
    if (roms.empty())
    {
-      draw_text(64, 298, "NO ROMS FOUND", 3, white);
-      draw_text(64, 342, "COPY NES FILES TO /SWITCH/GYRODUCKHUNT/ROMS", 2, cyan);
+      draw_text(76, 468, t.no_roms, 27, white);
+      draw_text(76, 518, t.copy_roms, 18, cyan);
    }
    else
    {
-      int first = std::max(0, selected_rom - 12);
-      int last = std::min((int)roms.size(), first + 20);
+      int first = std::max(0, std::min(selected_rom - 5, (int)roms.size() - 10));
+      int last = std::min((int)roms.size(), first + 10);
       for (int i = first; i < last; i++)
       {
-         int y = 278 + (i - first) * 19;
+         int y = 432 + (i - first) * 23;
          if (i == selected_rom)
          {
-         SDL_Rect highlight = { 48, y - 3, 850, 18 };
+            SDL_Rect highlight = { 64, y - 2, 1138, 22 };
             SDL_SetRenderDrawColor(renderer, 36, 76, 120, 255);
             SDL_RenderFillRect(renderer, &highlight);
          }
-         draw_text(64, y, short_name(roms[i]), 2, i == selected_rom ? cyan : white);
+         draw_text(78, y, short_name(roms[i]), 17, i == selected_rom ? cyan : white);
       }
    }
    if (!status_line.empty())
-      draw_text(64, 680, status_line, 2, SDL_Color{255, 100, 80, 255});
+      draw_text(66, 664, status_line, 16, SDL_Color{255, 100, 80, 255});
    SDL_RenderPresent(renderer);
 }
 
@@ -579,6 +763,7 @@ static void start_core(void)
 
 int main(int, char**)
 {
+   romfsInit();
    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
       return 1;
    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
@@ -592,6 +777,8 @@ int main(int, char**)
       renderer = SDL_CreateRenderer(window_handle, -1, SDL_RENDERER_SOFTWARE);
    if (!renderer)
       return 3;
+   if (TTF_Init() != 0)
+      return 4;
    game_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888,
          SDL_TEXTUREACCESS_STREAMING, GAME_W, GAME_H);
    SDL_AudioSpec want = {};
@@ -615,6 +802,8 @@ int main(int, char**)
    start_core();
    scan_roms();
    load_settings();
+   if (!open_ui_font())
+      return 5;
    frontend_ready = true;
    bool running = true;
    uint64_t previous_buttons = 0;
@@ -633,6 +822,17 @@ int main(int, char**)
 
       if (!game_loaded)
       {
+         int old_language = app_language;
+         if (pressed & HidNpadButton_L)
+            app_language = (app_language + 8) % 9;
+         if (pressed & HidNpadButton_R)
+            app_language = (app_language + 1) % 9;
+         if (app_language != old_language)
+         {
+            save_settings();
+            if (!open_ui_font())
+               app_language = old_language;
+         }
          if (!roms.empty() && (pressed & HidNpadButton_Up))
             selected_rom = std::max(0, selected_rom - 1);
          if (!roms.empty() && (pressed & HidNpadButton_Down))
@@ -679,12 +879,15 @@ int main(int, char**)
       hidStopSixAxisSensor(gyro_handle);
    if (audio_device)
       SDL_CloseAudioDevice(audio_device);
+   close_ui_font();
    if (game_texture)
       SDL_DestroyTexture(game_texture);
    if (renderer)
       SDL_DestroyRenderer(renderer);
    if (window_handle)
       SDL_DestroyWindow(window_handle);
+   TTF_Quit();
+   romfsExit();
    SDL_Quit();
    return 0;
 }

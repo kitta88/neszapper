@@ -9,7 +9,9 @@ A standalone Switch homebrew frontend for the Nestopia libretro core. It starts 
 3. Launch `gyroduckhunt.nro` from the Homebrew Menu.
 4. Select a game with the left Joy-Con D-pad and press SL or stick click. While playing, use the right Joy-Con as the pointer and hold ZR to fire.
 5. Point the right Joy-Con at the screen center and press Plus + right stick click to recenter. Press Minus + SL to return to the ROM list.
-6. In the ROM picker, use the left Joy-Con D-pad Left/Right to change gyro sensitivity from 1Г— to 20Г—. The default is 20Г— and the setting is saved in `config.ini`.
+6. In the ROM picker, use the left Joy-Con D-pad Left/Right to change gyro sensitivity from 1Г— to 20Г—. Use L/R to cycle the interface language: Russian, English, Japanese, Chinese, French, Spanish, Portuguese, German, and Italian. Language and sensitivity are saved in `config.ini`.
+
+Before launching, detach the left Joy-Con first so it becomes player 1, then detach the right Joy-Con so it becomes player 2. Launch the app after both are detached. The menu repeats this warning and shows the button map.
 
 The app creates `saves/` beside the ROM directory. It does not include ROM files; only use games you are entitled to use.
 
@@ -26,7 +28,7 @@ The app creates `saves/` beside the ROM directory. It does not include ROM files
 | Right Joy-Con ZR | Zapper trigger |
 | Right Joy-Con Plus (or Plus + stick click) | Recenter aim |
 
-The menu displays the button map, sensitivity and status of the split Joy-Con assignments and right gyro. The camera pointer is attached to Nestopia's port 2 Zapper input. RetroArch's touchscreen overlay and controller-device selection do not take part.
+The localized menu displays the button map, sensitivity and status of the split Joy-Con assignments and right gyro. The camera pointer is attached to Nestopia's port 2 Zapper input. RetroArch's touchscreen overlay and controller-device selection do not take part.
 
 ## Build
 
