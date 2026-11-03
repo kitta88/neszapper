@@ -9,7 +9,7 @@ A standalone Switch homebrew frontend for the Nestopia libretro core. It starts 
 3. Launch `gyroduckhunt.nro` from the Homebrew Menu.
 4. Select a game with the left Joy-Con D-pad and press SL or stick click. While playing, use the right Joy-Con as the pointer and hold ZR to fire.
 5. Point the right Joy-Con at the screen center and press Plus + right stick click to recenter. Press Minus + SL to return to the ROM list.
-6. In the ROM picker, use the left Joy-Con D-pad Left/Right to change gyro sensitivity from 1Г— to 20Г—. Use L/R to cycle the interface language: Russian, English, Japanese, Chinese, French, Spanish, Portuguese, German, and Italian. Language and sensitivity are saved in `config.ini`.
+6. In the ROM picker, use the left Joy-Con D-pad Left/Right to change gyro sensitivity from 1× to 20×. Use L/R to cycle the interface language: Russian, English, Japanese, Chinese, French, Spanish, Portuguese, German, and Italian. Language and sensitivity are saved in `config.ini`.
 
 Before launching, detach the left Joy-Con first so it becomes player 1, then detach the right Joy-Con so it becomes player 2. Launch the app after both are detached. The menu repeats this warning and shows the button map.
 
@@ -22,8 +22,9 @@ The app creates `saves/` beside the ROM directory. It does not include ROM files
 | Left Joy-Con D-pad / stick | NES directions |
 | Left Joy-Con SL / SR | NES B / A |
 | Left Joy-Con ZL / L | Turbo B / turbo A |
-| Left Joy-Con stick click / minus | Start / Select |
-| Left Joy-Con minus + SL | Return to ROM list |
+| Left Joy-Con stick click | Start |
+| Left Joy-Con SL | NES B / Select |
+| Left Joy-Con Minus | Return to ROM list while playing; refresh the ROM list in the menu |
 | Right Joy-Con gyro | Aim; up moves the cursor up |
 | Right Joy-Con ZR | Zapper trigger |
 | Right Joy-Con Plus (or Plus + stick click) | Recenter aim |
@@ -34,5 +35,4 @@ The bundled Noto fonts and their license notices are embedded in the NRO under `
 
 ## Build
 
-The GitHub Actions workflow builds the NRO using devkitPro/libnx and the Nestopia Switch static core. Run it from the repository's Actions tab with **Build Gyro Zapper NES for Switch в†’ Run workflow**, then download the `gyroduckhunt-switch-homebrew` artifact from the completed run.
-
+The GitHub Actions workflow builds the NRO using devkitPro/libnx and the Nestopia Switch static core. Run it from the repository's Actions tab with **Build Gyro Zapper NES for Switch → Run workflow**, then download the `gyroduckhunt-switch-homebrew` artifact from the completed run.
