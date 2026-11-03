@@ -1,6 +1,8 @@
 name: Build RetroArch 1.22.1 for Switch
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
