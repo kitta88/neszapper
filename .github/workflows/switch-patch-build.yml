@@ -47,6 +47,64 @@ jobs:
           path: nestopia
           submodules: recursive
 
+      - name: Enable dedicated Switch Gyro Zapper core mode
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("nestopia/libretro/libretro.cpp")
+          source = path.read_text()
+
+          def replace_once(old, new):
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one source match, found {count}: {old!r}")
+              source = source.replace(old, new)
+
+          replace_once(
+              "#define RETRO_DEVICE_ZAPPER RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_POINTER, 0)\n",
+              "#define RETRO_DEVICE_ZAPPER RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_POINTER, 0)\n"
+              "#define RETRO_DEVICE_SWITCH_GYRO_ZAPPER RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_POINTER, 1)\n"
+          )
+          replace_once(
+              "static size_t state_size = 0;\n",
+              "static size_t state_size = 0;\n"
+              "static bool switch_gyro_zapper_mode = false;\n"
+          )
+          replace_once(
+              '      { "Zapper", RETRO_DEVICE_ZAPPER },\n',
+              '      { "Zapper", RETRO_DEVICE_ZAPPER },\n'
+              '      { "Switch Gyro Zapper", RETRO_DEVICE_SWITCH_GYRO_ZAPPER },\n'
+          )
+          replace_once(
+              "      case RETRO_DEVICE_ZAPPER:\n"
+              "         Api::Input(emulator).ConnectController(port, Api::Input::ZAPPER);\n"
+              "         break;\n",
+              "      case RETRO_DEVICE_SWITCH_GYRO_ZAPPER:\n"
+              "         if (port == 1) switch_gyro_zapper_mode = true;\n"
+              "         Api::Input(emulator).ConnectController(port, Api::Input::ZAPPER);\n"
+              "         break;\n"
+              "      case RETRO_DEVICE_MOUSE:\n"
+              "         if (port == 1)\n"
+              "         {\n"
+              "            switch_gyro_zapper_mode = true;\n"
+              "            Api::Input(emulator).ConnectController(port, Api::Input::ZAPPER);\n"
+              "         }\n"
+              "         break;\n"
+              "      case RETRO_DEVICE_ZAPPER:\n"
+              "         if (port == 1) switch_gyro_zapper_mode = false;\n"
+              "         Api::Input(emulator).ConnectController(port, Api::Input::ZAPPER);\n"
+              "         break;\n"
+          )
+          replace_once(
+              "   switch (zapper_device)\n",
+              "   switch (switch_gyro_zapper_mode ? ZAPPER_DEVICE_LIGHTGUN : zapper_device)\n"
+          )
+          path.write_text(source)
+          print("Nestopia Switch Gyro Zapper mode applied.")
+          PY
+
       - name: Build Nestopia static core
         run: |
           make -C nestopia/libretro -j"$(getconf _NPROCESSORS_ONLN)" platform=libnx
@@ -56,14 +114,15 @@ jobs:
         working-directory: retroarch
         run: |
           make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" clean
-          make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Gyro Zapper 1.22.1 TEST"
+          make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Switch Gyro Zapper MODE"
           test -s retroarch_switch.nro
           grep -aFq '[Switch Zapper] patched gyro mouse driver active on pad 2' retroarch_switch.nro
           grep -aFq '1.22.1' retroarch_switch.nro
+          grep -aFq 'Switch Gyro Zapper' retroarch_switch.nro
           sha256sum retroarch_switch.nro
 
       - uses: actions/upload-artifact@v4
         with:
-          name: retroarch-1.22.1-switch-nestopia-verified
+          name: retroarch-switch-gyro-zapper-mode
           path: retroarch/retroarch_switch.nro
           if-no-files-found: error
