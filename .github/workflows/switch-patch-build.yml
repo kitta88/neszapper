@@ -1,4 +1,4 @@
-name: Build RetroArch Switch patch
+name: Build RetroArch 1.22.1 for Switch
 
 on:
   push:
@@ -11,12 +11,25 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     container:
       image: reallibretroretroarch/libretro-build-libnx-devkitpro:v4-10-0
       options: --user root
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check out RetroArch 1.22.1
+        uses: actions/checkout@v4
+        with:
+          repository: libretro/RetroArch
+          ref: v1.22.1
+          path: retroarch
+
+      - name: Apply Switch input changes
+        run: |
+          cp patch/input/drivers/switch_input.c retroarch/input/drivers/switch_input.c
+          cp patch/input/drivers_joypad/switch_joypad.c retroarch/input/drivers_joypad/switch_joypad.c
+
       - name: Check out Nestopia core
         uses: actions/checkout@v4
         with:
@@ -24,17 +37,20 @@ jobs:
           ref: master
           path: nestopia
           submodules: recursive
+
       - name: Build Nestopia static core
         run: |
           make -C nestopia/libretro -j"$(getconf _NPROCESSORS_ONLN)" platform=libnx
-          cp nestopia/libretro/nestopia_libretro_libnx.a libretro_libnx.a
+          cp nestopia/libretro/nestopia_libretro_libnx.a retroarch/libretro_libnx.a
+
       - name: Build Switch NRO
+        working-directory: retroarch
         run: |
           make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" clean
           make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Gyro Zapper TEST"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: retroarch-switch-patch
-          path: retroarch_switch.nro
+          name: retroarch-1.22.1-switch-nestopia-diagnostics
+          path: retroarch/retroarch_switch.nro
           if-no-files-found: error
-
