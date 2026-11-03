@@ -43,7 +43,7 @@ bool switch_joypad_lightgun_state(bool *trigger, bool *recenter)
       *trigger = false;
    if (recenter)
       *recenter = false;
-   if (!padIsNpadActive(&pad_states[1], HidNpadIdType_No2))
+   if (!(hidGetNpadDeviceType(HidNpadIdType_No2) & HidDeviceTypeBits_JoyRight))
       return false;
    buttons = padGetButtons(&pad_states[1]);
    if (trigger)
