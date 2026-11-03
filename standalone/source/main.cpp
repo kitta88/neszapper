@@ -34,9 +34,9 @@ void retro_run(void);
 void retro_set_controller_port_device(unsigned, unsigned);
 };
 
-static const char* const APP_DIR = "/switch/gyroduckhunt";
-static const char* const ROM_DIR = "/switch/gyroduckhunt/roms";
-static const char* const SAVE_DIR = "/switch/gyroduckhunt/saves";
+static const char* const APP_DIR = "sdmc:/switch/gyroduckhunt";
+static const char* const ROM_DIR = "sdmc:/switch/gyroduckhunt/roms";
+static const char* const SAVE_DIR = "sdmc:/switch/gyroduckhunt/saves";
 static const int SCREEN_W = 1280;
 static const int SCREEN_H = 720;
 static const int GAME_W = 256;
@@ -428,6 +428,8 @@ static void render_menu(void)
    draw_text(64, 48, "GYRO ZAPPER - SELECT NES ROM", 3, cyan);
    draw_text(64, 92, "A: PLAY   UP DOWN: SELECT", 2, white);
    draw_text(64, 124, "ZR: FIRE   PLUS + R STICK: RECENTER", 2, white);
+   draw_text(64, 156, gyro_ready ? "RIGHT GYRO READY" : "RIGHT GYRO NOT FOUND", 2,
+         gyro_ready ? cyan : SDL_Color{255, 100, 80, 255});
    if (roms.empty())
    {
       draw_text(64, 210, "NO ROMS FOUND", 3, white);
