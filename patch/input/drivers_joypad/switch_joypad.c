@@ -43,13 +43,12 @@ bool switch_joypad_lightgun_state(bool *trigger, bool *recenter)
       *trigger = false;
    if (recenter)
       *recenter = false;
-   if (!(hidGetNpadDeviceType(HidNpadIdType_No2) & HidDeviceTypeBits_JoyRight))
-      return false;
+   /* The right Joy-Con is intentionally assigned to player 2 by the user. */
    buttons = padGetButtons(&pad_states[1]);
    if (trigger)
       *trigger = (buttons & HidNpadButton_ZR) != 0;
    if (recenter)
-      *recenter = (buttons & HidNpadButton_Minus) && (buttons & HidNpadButton_StickR);
+      *recenter = (buttons & HidNpadButton_Plus) && (buttons & HidNpadButton_StickR);
    return true;
 }
 #endif
