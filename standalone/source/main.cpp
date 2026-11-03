@@ -37,11 +37,15 @@ void retro_set_controller_port_device(unsigned, unsigned);
 static const char* const APP_DIR = "sdmc:/switch/gyroduckhunt";
 static const char* const ROM_DIR = "sdmc:/switch/gyroduckhunt/roms";
 static const char* const SAVE_DIR = "sdmc:/switch/gyroduckhunt/saves";
+static const char* const CONFIG_PATH = "sdmc:/switch/gyroduckhunt/config.ini";
 static const int SCREEN_W = 1280;
 static const int SCREEN_H = 720;
 static const int GAME_W = 256;
 static const int GAME_H = 240;
 static const float GYRO_GAIN = 10430.0f;
+static const int DEFAULT_AIM_SENSITIVITY = 8;
+static const int MIN_AIM_SENSITIVITY = 1;
+static const int MAX_AIM_SENSITIVITY = 20;
 static const unsigned MAX_ROMS = 256;
 
 static SDL_Window* window_handle = nullptr;
@@ -71,6 +75,7 @@ static uint64_t pad0_buttons = 0;
 static uint64_t right_buttons = 0;
 static HidAnalogStickState left_stick = {};
 static unsigned split_retry_frames = 0;
+static int aim_sensitivity = DEFAULT_AIM_SENSITIVITY;
 static unsigned core_width = GAME_W;
 static unsigned core_height = GAME_H;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
@@ -124,6 +129,27 @@ static void scan_roms(void)
          });
    if (selected_rom >= (int)roms.size())
       selected_rom = roms.empty() ? 0 : (int)roms.size() - 1;
+}
+
+static void load_settings(void)
+{
+   FILE* f = fopen(CONFIG_PATH, "r");
+   int value;
+   if (!f)
+      return;
+   if (fscanf(f, "%d", &value) == 1)
+      aim_sensitivity = std::max(MIN_AIM_SENSITIVITY,
+            std::min(MAX_AIM_SENSITIVITY, value));
+   fclose(f);
+}
+
+static void save_settings(void)
+{
+   FILE* f = fopen(CONFIG_PATH, "w");
+   if (!f)
+      return;
+   fprintf(f, "%d\n", aim_sensitivity);
+   fclose(f);
 }
 
 static bool read_rom(const std::string& path)
@@ -438,10 +464,14 @@ static void render_menu(void)
          split_joycons_ready ? cyan : SDL_Color{255, 180, 80, 255});
    draw_text(920, 210, gyro_ready ? "GYRO OK" : "GYRO WAIT", 2,
          gyro_ready ? cyan : SDL_Color{255, 100, 80, 255});
+   char sensitivity_label[64];
+   snprintf(sensitivity_label, sizeof(sensitivity_label),
+         "AIM SENSITIVITY: %dX   LEFT/RIGHT: ADJUST", aim_sensitivity);
+   draw_text(64, 236, sensitivity_label, 2, cyan);
    if (roms.empty())
    {
-      draw_text(64, 270, "NO ROMS FOUND", 3, white);
-      draw_text(64, 314, "COPY NES FILES TO /SWITCH/GYRODUCKHUNT/ROMS", 2, cyan);
+      draw_text(64, 298, "NO ROMS FOUND", 3, white);
+      draw_text(64, 342, "COPY NES FILES TO /SWITCH/GYRODUCKHUNT/ROMS", 2, cyan);
    }
    else
    {
@@ -449,10 +479,10 @@ static void render_menu(void)
       int last = std::min((int)roms.size(), first + 20);
       for (int i = first; i < last; i++)
       {
-         int y = 258 + (i - first) * 20;
+         int y = 278 + (i - first) * 19;
          if (i == selected_rom)
          {
-            SDL_Rect highlight = { 48, y - 3, 850, 19 };
+         SDL_Rect highlight = { 48, y - 3, 850, 18 };
             SDL_SetRenderDrawColor(renderer, 36, 76, 120, 255);
             SDL_RenderFillRect(renderer, &highlight);
          }
@@ -484,8 +514,9 @@ static void poll_switch_input(void)
       if (hidGetSixAxisSensorStates(gyro_handle, &state, 1) > 0 && state.delta_time)
       {
          float dt = std::min(0.05f, (float)state.delta_time / 1000000000.0f);
-         float dx = -state.angular_velocity.y * dt * GYRO_GAIN;
-         float dy =  state.angular_velocity.x * dt * GYRO_GAIN;
+         float scale = (float)aim_sensitivity;
+         float dx = -state.angular_velocity.y * dt * GYRO_GAIN * scale;
+         float dy = -state.angular_velocity.x * dt * GYRO_GAIN * scale;
          int ix = (int)dx;
          int iy = (int)dy;
          cursor_x = std::max(0, std::min(65534, cursor_x + ix));
@@ -565,6 +596,7 @@ int main(int, char**)
 
    start_core();
    scan_roms();
+   load_settings();
    frontend_ready = true;
    bool running = true;
    uint64_t previous_buttons = 0;
@@ -587,6 +619,16 @@ int main(int, char**)
             selected_rom = std::max(0, selected_rom - 1);
          if (!roms.empty() && (pressed & HidNpadButton_Down))
             selected_rom = std::min((int)roms.size() - 1, selected_rom + 1);
+         if (pressed & HidNpadButton_Left)
+         {
+            aim_sensitivity = std::max(MIN_AIM_SENSITIVITY, aim_sensitivity - 1);
+            save_settings();
+         }
+         if (pressed & HidNpadButton_Right)
+         {
+            aim_sensitivity = std::min(MAX_AIM_SENSITIVITY, aim_sensitivity + 1);
+            save_settings();
+         }
          if ((pressed & (HidNpadButton_LeftSL | HidNpadButton_StickL)) && !roms.empty())
             load_selected_rom();
          if (pressed & HidNpadButton_Minus)
