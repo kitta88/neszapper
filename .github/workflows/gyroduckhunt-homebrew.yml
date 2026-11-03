@@ -26,7 +26,9 @@ jobs:
           if [ ! -x "$DEVKITPRO/portlibs/switch/bin/sdl2-config" ]; then
             dkp-pacman -Sy --noconfirm switch-sdl2
           fi
-          dkp-pacman -Sy --noconfirm switch-sdl2_ttf
+          if [ ! -f "$DEVKITPRO/portlibs/switch/lib/libSDL2_ttf.a" ]; then
+            dkp-pacman -Sy --noconfirm switch-sdl2_ttf
+          fi
           "$DEVKITPRO/portlibs/switch/bin/sdl2-config" --version
 
       - name: Install multilingual UI fonts
