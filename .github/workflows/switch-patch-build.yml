@@ -99,7 +99,7 @@ jobs:
           )
           replace_once(
               "   switch (zapper_device)\n",
-              "   switch (switch_gyro_zapper_mode ? ZAPPER_DEVICE_LIGHTGUN : zapper_device)\n"
+              "   switch (switch_gyro_zapper_mode ? ZAPPER_DEVICE_POINTER : zapper_device)\n"
           )
           path.write_text(source)
           print("Nestopia Switch Gyro Zapper mode applied.")
@@ -114,15 +114,16 @@ jobs:
         working-directory: retroarch
         run: |
           make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" clean
-          make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Switch Gyro Zapper MODE"
+          make -f Makefile.libnx -j"$(getconf _NPROCESSORS_ONLN)" APP_TITLE="RetroArch Switch Gyro Pointer MODE"
           test -s retroarch_switch.nro
           grep -aFq '[Switch Zapper] patched gyro mouse driver active on pad 2' retroarch_switch.nro
           grep -aFq '1.22.1' retroarch_switch.nro
           grep -aFq 'Switch Gyro Zapper' retroarch_switch.nro
+          grep -aFq '[Switch Zapper] core requested POINTER input on port 2' retroarch_switch.nro
           sha256sum retroarch_switch.nro
 
       - uses: actions/upload-artifact@v4
         with:
-          name: retroarch-switch-gyro-zapper-mode
+          name: retroarch-switch-gyro-pointer-mode
           path: retroarch/retroarch_switch.nro
           if-no-files-found: error
