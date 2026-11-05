@@ -36,6 +36,8 @@ jobs:
           apt-get update
           apt-get install -y fonts-noto-core fonts-noto-cjk
           mkdir -p standalone/romfs/licenses
+          base64 --decode assets/quickstart.bmp.base64 > standalone/romfs/quickstart.bmp
+          test -s standalone/romfs/quickstart.bmp
           test -s standalone/icon.jpg
           cp /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf standalone/romfs/
           cp /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc standalone/romfs/
