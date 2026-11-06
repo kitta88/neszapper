@@ -48,11 +48,13 @@ static const float GYRO_GAIN = 93870.0f;
 static const int DEFAULT_AIM_SENSITIVITY = 20;
 static const int MIN_AIM_SENSITIVITY = 1;
 static const int MAX_AIM_SENSITIVITY = 20;
+static const int LANGUAGE_COUNT = 12;
 static const unsigned MAX_ROMS = 256;
 
 static SDL_Window* window_handle = nullptr;
 static SDL_Renderer* renderer = nullptr;
 static SDL_Texture* game_texture = nullptr;
+static SDL_Texture* instruction_texture = nullptr;
 static TTF_Font* ui_font = nullptr;
 static SDL_AudioDeviceID audio_device = 0;
 static PadState pads[2];
@@ -60,6 +62,8 @@ static HidSixAxisSensorHandle gyro_handle;
 static bool gyro_ready = false;
 static bool split_joycons_ready = false;
 static bool game_loaded = false;
+static bool show_guide = false;
+static int guide_page = 0;
 static bool frontend_ready = false;
 static bool crosshair_enabled = true;
 static int cursor_x = 32767;
@@ -81,6 +85,19 @@ static HidAnalogStickState left_stick = {};
 static unsigned split_retry_frames = 0;
 static int aim_sensitivity = DEFAULT_AIM_SENSITIVITY;
 static int app_language = 0;
+static const uint64_t DEFAULT_BUTTON_MAP[8] = {
+   HidNpadButton_LeftSL, HidNpadButton_LeftSR, HidNpadButton_ZL,
+   HidNpadButton_L, HidNpadButton_StickL, HidNpadButton_LeftSL,
+   HidNpadButton_ZR, HidNpadButton_Plus
+};
+static uint64_t button_map[8] = {
+   HidNpadButton_LeftSL, HidNpadButton_LeftSR, HidNpadButton_ZL,
+   HidNpadButton_L, HidNpadButton_StickL, HidNpadButton_LeftSL,
+   HidNpadButton_ZR, HidNpadButton_Plus
+};
+static bool remap_waiting = false;
+static int remap_selection = 0;
+static uint64_t previous_remap_right_buttons = 0;
 static unsigned core_width = GAME_W;
 static unsigned core_height = GAME_H;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
@@ -148,15 +165,26 @@ static void load_settings(void)
 {
    FILE* f = fopen(CONFIG_PATH, "r");
    int version, value, language = 0;
+   unsigned long long loaded_map[8] = {};
    if (!f)
       return;
    int fields = fscanf(f, "%d %d %d", &version, &value, &language);
-   if (fields >= 2 && (version == 2 || version == 3))
+   if (fields >= 2 && (version == 2 || version == 3 || version == 4 || version == 5))
    {
       aim_sensitivity = std::max(MIN_AIM_SENSITIVITY,
             std::min(MAX_AIM_SENSITIVITY, value));
-      if (version == 3 && fields == 3)
-         app_language = std::max(0, std::min(8, language));
+      if ((version == 3 || version == 4 || version == 5) && fields == 3)
+         app_language = std::max(0, std::min(LANGUAGE_COUNT - 1, language));
+      if (version == 5 && fields == 3)
+      {
+         int map_fields = 0;
+         for (int i = 0; i < 8; i++)
+            map_fields += fscanf(f, "%llu", &loaded_map[i]) == 1;
+         if (map_fields == 8)
+            for (int i = 0; i < 8; i++)
+               if (loaded_map[i])
+                  button_map[i] = (uint64_t)loaded_map[i];
+      }
    }
    else
    {
@@ -171,7 +199,10 @@ static void save_settings(void)
    FILE* f = fopen(CONFIG_PATH, "w");
    if (!f)
       return;
-   fprintf(f, "3 %d %d\n", aim_sensitivity, app_language);
+   fprintf(f, "5 %d %d", aim_sensitivity, app_language);
+   for (int i = 0; i < 8; i++)
+      fprintf(f, " %llu", (unsigned long long)button_map[i]);
+   fputc('\n', f);
    fclose(f);
 }
 
@@ -295,19 +326,19 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
    {
       switch (id)
       {
-         case RETRO_DEVICE_ID_JOYPAD_B:      return (pad0_buttons & HidNpadButton_LeftSL) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_Y:      return (pad0_buttons & HidNpadButton_ZL) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_SELECT: return (pad0_buttons & HidNpadButton_LeftSL) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_START:  return (pad0_buttons & HidNpadButton_StickL) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_B:      return (pad0_buttons & button_map[0]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_Y:      return (pad0_buttons & button_map[2]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_SELECT: return (pad0_buttons & button_map[5]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_START:  return (pad0_buttons & button_map[4]) != 0;
          case RETRO_DEVICE_ID_JOYPAD_UP:     return (pad0_buttons & HidNpadButton_Up) != 0 || left_stick.y > 12000;
          case RETRO_DEVICE_ID_JOYPAD_DOWN:   return (pad0_buttons & HidNpadButton_Down) != 0 || left_stick.y < -12000;
          case RETRO_DEVICE_ID_JOYPAD_LEFT:   return (pad0_buttons & HidNpadButton_Left) != 0 || left_stick.x < -12000;
          case RETRO_DEVICE_ID_JOYPAD_RIGHT:  return (pad0_buttons & HidNpadButton_Right) != 0 || left_stick.x > 12000;
-         case RETRO_DEVICE_ID_JOYPAD_A:      return (pad0_buttons & HidNpadButton_LeftSR) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_X:      return (pad0_buttons & HidNpadButton_L) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_L:      return (pad0_buttons & HidNpadButton_LeftSL) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_L2:     return (pad0_buttons & HidNpadButton_L) != 0;
-         case RETRO_DEVICE_ID_JOYPAD_L3:     return (pad0_buttons & HidNpadButton_StickL) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_A:      return (pad0_buttons & button_map[1]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_X:      return (pad0_buttons & button_map[3]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_L:      return (pad0_buttons & button_map[2]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_L2:     return (pad0_buttons & button_map[3]) != 0;
+         case RETRO_DEVICE_ID_JOYPAD_L3:     return (pad0_buttons & button_map[4]) != 0;
       }
       return 0;
    }
@@ -328,7 +359,7 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
       {
          case RETRO_DEVICE_ID_POINTER_X:       return pointer_axis(cursor_x - 32767);
          case RETRO_DEVICE_ID_POINTER_Y:       return pointer_axis(cursor_y - 32767);
-         case RETRO_DEVICE_ID_POINTER_PRESSED: return (right_buttons & HidNpadButton_ZR) != 0;
+         case RETRO_DEVICE_ID_POINTER_PRESSED: return (right_buttons & button_map[6]) != 0;
       }
    }
    else if (base_device == RETRO_DEVICE_LIGHTGUN)
@@ -337,7 +368,7 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
       {
          case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X: return pointer_axis(cursor_x - 32767);
          case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y: return pointer_axis(cursor_y - 32767);
-         case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:  return (right_buttons & HidNpadButton_ZR) != 0;
+         case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:  return (right_buttons & button_map[6]) != 0;
          case RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN:
          case RETRO_DEVICE_ID_LIGHTGUN_RELOAD:   return 0;
       }
@@ -348,7 +379,7 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
       {
          case RETRO_DEVICE_ID_MOUSE_X:     { int v = cursor_dx; cursor_dx = 0; return (int16_t)v; }
          case RETRO_DEVICE_ID_MOUSE_Y:     { int v = cursor_dy; cursor_dy = 0; return (int16_t)v; }
-         case RETRO_DEVICE_ID_MOUSE_LEFT:  return (right_buttons & HidNpadButton_ZR) != 0;
+         case RETRO_DEVICE_ID_MOUSE_LEFT:  return (right_buttons & button_map[6]) != 0;
       }
    }
    return 0;
@@ -425,118 +456,209 @@ struct MenuText
    const char* gyro_wait;
    const char* read_error;
    const char* core_error;
+   const char* instruction_link;
+   const char* guide_title;
+   const char* guide_hint;
+   const char* left_map_title;
+   const char* left_map;
+   const char* right_map_title;
+   const char* right_map;
+   const char* remap_title;
+   const char* remap_hint;
+   const char* remap_wait;
 };
 
 static const MenuText menu_text[] = {
    {"Русский", "ZAPP-con — ИГРЫ NES", "Игры NES с прицеливанием гироскопом Joy-Con", "КНОПКИ И УПРАВЛЕНИЕ",
     "ВЫБОР: крестовина вверх/вниз; SL или стик — играть",
     "В ИГРЕ: крестовина/стик — ходьба; SL=B; SR=A",
-    "ZL/L — Turbo B/A; стик=START; MINUS=SELECT",
+    "ZL/L — Turbo B/A; стик=START; SL=SELECT",
     "ПРАВЫЙ JOY-CON: гироприцел; ZR — выстрел",
     "PLUS — центр прицела; MINUS — меню игр",
     "ВАЖНО: ПОРЯДОК JOY-CON", "Сначала снимите ЛЕВЫЙ (игрок 1), затем ПРАВЫЙ (игрок 2).",
     "Запустите приложение после отсоединения обоих Joy-Con.", "ЯЗЫК  L/R", "ЧУВСТВИТЕЛЬНОСТЬ  ←/→", "СПИСОК ИГР NES",
     "ИГРЫ НЕ НАЙДЕНЫ", "Скопируйте ROM-файлы в /switch/gyroduckhunt/roms",
     "РАЗДЕЛЕНИЕ ГОТОВО", "ПОДКЛЮЧИТЕ JOY-CON ОТДЕЛЬНО", "ГИРОСКОП ГОТОВ", "ОЖИДАНИЕ ГИРОСКОПА",
-    "Не удалось прочитать выбранную игру", "Nestopia не смогла открыть ROM"},
+    "Не удалось прочитать выбранную игру", "Nestopia не смогла открыть ROM",
+    "МИНУС — ИНСТРУКЦИЯ / КНОПКИ", "КАК ИГРАТЬ", "Минус: назад • ←/→: страницы",
+    "ЛЕВЫЙ JOY-CON — ИГРОК 1", "Крестовина/стик: движение\nSL: B и Select\nSR: A\nZL: Turbo B • L: Turbo A\nНажатие стика: Start\nMinus в игре: список игр",
+    "ПРАВЫЙ JOY-CON — ZAPPER", "Гироскоп: прицел\nZR: выстрел\nPlus: центрирование\nPlus + нажатие стика: центрирование\nSL/SR: не назначены",
+    "ПЕРЕНАЗНАЧЕНИЕ КНОПОК", "↑/↓ действие • SL назначить • стик: сброс • ←/→ страницы • Minus назад", "Нажмите кнопку на указанном Joy-Con…"},
    {"English", "ZAPP-con — NES GAMES", "NES games with Joy-Con gyro aiming", "CONTROLS",
     "PICK: D-pad up/down; SL or stick click — play",
     "IN GAME: D-pad/stick move; SL=B; SR=A",
-    "ZL/L — Turbo B/A; stick=START; MINUS=SELECT",
+    "ZL/L — Turbo B/A; stick=START; SL=SELECT",
     "RIGHT JOY-CON: gyro aim; ZR — fire",
     "PLUS — recenter; MINUS — game list",
     "IMPORTANT: JOY-CON ORDER", "Detach LEFT Joy-Con first (player 1), then RIGHT (player 2).",
     "Launch the app after both Joy-Cons are detached.", "LANGUAGE  L/R", "AIM SPEED  ←/→", "NES GAME LIST",
     "NO GAMES FOUND", "Copy ROM files to /switch/gyroduckhunt/roms",
     "SPLIT CONTROLLERS READY", "DETACH JOY-CONS SEPARATELY", "GYRO READY", "WAITING FOR GYRO",
-    "Could not read the selected game", "Nestopia could not load this ROM"},
+    "Could not read the selected game", "Nestopia could not load this ROM",
+    "MINUS — GUIDE / REMAP", "HOW TO PLAY", "Minus: back • ←/→: pages",
+    "LEFT JOY-CON — PLAYER 1", "D-pad/stick: move\nSL: B and Select\nSR: A\nZL: Turbo B • L: Turbo A\nStick click: Start\nMinus in game: game list",
+    "RIGHT JOY-CON — ZAPPER", "Gyro: aim\nZR: fire\nPlus: recenter\nPlus + stick click: recenter\nSL/SR: unused",
+    "BUTTON REMAPPING", "↑/↓ select action • SL assign • stick: reset • ←/→ pages • Minus back", "Press a button on the shown Joy-Con…"},
    {"日本語", "ZAPP-con — NESゲーム", "Joy-Conのジャイロで照準を操作", "操作方法",
     "選択：十字キー上下、SLまたはスティック押し込みで決定",
     "ゲーム：十字キー／スティック移動、SL=B、SR=A",
-    "ZL/L：連射B/A、スティック押し込み=START、MINUS=SELECT",
+    "ZL/L：連射B/A、スティック押し込み=START、SL=SELECT",
     "右Joy-Con：ジャイロ照準、ZRで発射",
     "PLUSで照準を中央へ、MINUSでゲーム一覧へ",
     "重要：Joy-Conを外す順番", "左Joy-Con（プレイヤー1）を先に、右Joy-Con（プレイヤー2）を後に外します。",
     "両方を外してからアプリを起動してください。", "言語  L/R", "照準速度  ←/→", "NESゲーム一覧",
     "ゲームがありません", "/switch/gyroduckhunt/roms にROMをコピーしてください",
     "分離接続OK", "Joy-Conを個別に接続してください", "ジャイロ準備OK", "ジャイロ待機中",
-    "選択したゲームを読み込めません", "NestopiaがこのROMを読み込めません"},
+    "選択したゲームを読み込めません", "NestopiaがこのROMを読み込めません",
+    "MINUS — ガイド／ボタン変更", "遊び方", "Minus：戻る • 左右：ページ切替",
+    "左Joy-Con — プレイヤー1", "十字キー／スティック：移動\nSL：BとSelect\nSR：A\nZL：Turbo B • L：Turbo A\nスティック押し込み：Start\nゲーム中のMinus：一覧",
+    "右Joy-Con — Zapper", "ジャイロ：照準\nZR：発射\nPlus：照準を中央へ\nPlus＋スティック押し込み：中央へ\nSL/SR：未割り当て",
+    "ボタンの割り当て", "↑/↓：選択 • SL：割当 • スティック：初期化 • ←/→：ページ • Minus：戻る", "表示されたJoy-Conのボタンを押してください…"},
    {"简体中文", "ZAPP-con — NES 游戏", "使用 Joy-Con 陀螺仪瞄准 NES 游戏", "按键说明",
     "选择：十字键上/下；按 SL 或摇杆开始",
     "游戏中：十字键/摇杆移动；SL=B；SR=A",
-    "ZL/L：连发 B/A；摇杆按下=START；MINUS=SELECT",
+    "ZL/L：连发 B/A；摇杆按下=START；SL=SELECT",
     "右 Joy-Con：陀螺仪瞄准；ZR 开火",
     "PLUS 重新居中；MINUS 返回游戏列表",
     "重要：Joy-Con 拆卸顺序", "先拆左 Joy-Con（玩家 1），再拆右 Joy-Con（玩家 2）。",
     "两个 Joy-Con 都拆下后再启动应用。", "语言  L/R", "瞄准速度  ←/→", "NES 游戏列表",
     "未找到游戏", "将 ROM 复制到 /switch/gyroduckhunt/roms",
     "分体手柄已就绪", "请分别连接 Joy-Con", "陀螺仪已就绪", "正在等待陀螺仪",
-    "无法读取所选游戏", "Nestopia 无法加载此 ROM"},
+    "无法读取所选游戏", "Nestopia 无法加载此 ROM",
+    "MINUS — 操作指南／按键设置", "使用指南", "Minus：返回 • 左右：切换页面",
+    "左 Joy-Con — 玩家 1", "十字键/摇杆：移动\nSL：B 和 Select\nSR：A\nZL：连发 B • L：连发 A\n按下摇杆：Start\n游戏中按 Minus：游戏列表",
+    "右 Joy-Con — Zapper", "陀螺仪：瞄准\nZR：开火\nPlus：瞄准居中\nPlus + 按下摇杆：居中\nSL/SR：未分配",
+    "按键重新映射", "↑/↓：选择操作 • SL：设置 • 按下摇杆：重置 • ←/→：页面 • Minus：返回", "请按屏幕所示 Joy-Con 上的按钮…"},
    {"Français", "ZAPP-con — JEUX NES", "Jeux NES visés au gyroscope Joy-Con", "COMMANDES",
     "Choisir : croix haut/bas ; SL ou stick pour jouer",
     "Jeu : croix/stick déplacer ; SL=B ; SR=A",
-    "ZL/L : Turbo B/A ; stick=START ; MINUS=SELECT",
+    "ZL/L : Turbo B/A ; stick=START ; SL=SELECT",
     "JOY-CON DROIT : visée gyro ; ZR — tirer",
     "PLUS recentre ; MINUS revient à la liste",
     "IMPORTANT : ORDRE DES JOY-CON", "Détachez d’abord le Joy-Con GAUCHE (joueur 1), puis le DROIT (joueur 2).",
     "Lancez l’application après avoir détaché les deux.", "LANGUE  L/R", "VITESSE  ←/→", "JEUX NES",
     "AUCUN JEU", "Copiez les ROM dans /switch/gyroduckhunt/roms",
     "MANETTES SÉPARÉES OK", "DÉTACHEZ LES JOY-CON", "GYRO PRÊT", "GYRO EN ATTENTE",
-    "Impossible de lire le jeu", "Nestopia ne peut pas charger cette ROM"},
+    "Impossible de lire le jeu", "Nestopia ne peut pas charger cette ROM",
+    "MINUS — GUIDE / REMAP", "COMMENT JOUER", "Minus : retour • ←/→ : pages",
+    "JOY-CON GAUCHE — JOUEUR 1", "Croix/stick : déplacement\nSL : B et Select\nSR : A\nZL : Turbo B • L : Turbo A\nClic stick : Start\nMinus en jeu : liste",
+    "JOY-CON DROIT — ZAPPER", "Gyroscope : viser\nZR : tirer\nPlus : recentrer\nPlus + clic stick : recentrer\nSL/SR : inutilisés",
+    "RECONFIGURER LES BOUTONS", "↑/↓ choisir • SL assigner • stick : défaut • ←/→ pages • Minus retour", "Appuyez sur un bouton du Joy-Con affiché…"},
    {"Español", "ZAPP-con — JUEGOS NES", "Apunta con el giroscopio del Joy-Con", "CONTROLES",
     "Elegir: cruceta arriba/abajo; SL o stick para jugar",
     "Juego: cruceta/stick mover; SL=B; SR=A",
-    "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
+    "ZL/L: Turbo B/A; stick=START; SL=SELECT",
     "JOY-CON DERECHO: mira giroscópica; ZR dispara",
     "PLUS centra la mira; MINUS vuelve a la lista",
     "IMPORTANTE: ORDEN DE JOY-CON", "Desconecta primero el Joy-Con IZQUIERDO (jugador 1) y luego el DERECHO (jugador 2).",
     "Inicia la aplicación después de desconectar ambos.", "IDIOMA  L/R", "VELOCIDAD  ←/→", "JUEGOS NES",
     "NO HAY JUEGOS", "Copia ROM en /switch/gyroduckhunt/roms",
     "MANDOS SEPARADOS OK", "DESCONECTA LOS JOY-CON", "GIROSCOPIO LISTO", "ESPERANDO GIROSCOPIO",
-    "No se puede leer el juego", "Nestopia no pudo cargar esta ROM"},
+    "No se puede leer el juego", "Nestopia no pudo cargar esta ROM",
+    "MINUS — GUÍA / REASIGNAR", "CÓMO JUGAR", "Minus: volver • ←/→: páginas",
+    "JOY-CON IZQUIERDO — JUGADOR 1", "Cruceta/stick: mover\nSL: B y Select\nSR: A\nZL: Turbo B • L: Turbo A\nPulsar stick: Start\nMinus durante el juego: lista",
+    "JOY-CON DERECHO — ZAPPER", "Giroscopio: apuntar\nZR: disparar\nPlus: centrar\nPlus + pulsar stick: centrar\nSL/SR: sin asignar",
+    "REASIGNAR BOTONES", "↑/↓ elegir • SL asignar • stick: defecto • ←/→ páginas • Minus volver", "Pulsa un botón del Joy-Con indicado…"},
    {"Português", "ZAPP-con — JOGOS NES", "Mira com o giroscópio do Joy-Con", "CONTROLES",
     "Escolher: direcional cima/baixo; SL ou stick para jogar",
     "Jogo: direcional/stick mover; SL=B; SR=A",
-    "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
+    "ZL/L: Turbo B/A; stick=START; SL=SELECT",
     "JOY-CON DIREITO: mira giroscópica; ZR atira",
     "PLUS centraliza; MINUS volta à lista",
     "IMPORTANTE: ORDEM DOS JOY-CON", "Remova primeiro o Joy-Con ESQUERDO (jogador 1), depois o DIREITO (jogador 2).",
     "Abra o app depois de remover os dois Joy-Con.", "IDIOMA  L/R", "VELOCIDADE  ←/→", "JOGOS NES",
     "NENHUM JOGO", "Copie ROM para /switch/gyroduckhunt/roms",
     "CONTROLES SEPARADOS OK", "REMOVA OS JOY-CON", "GIROSCÓPIO PRONTO", "AGUARDANDO GIROSCÓPIO",
-    "Não foi possível ler o jogo", "Nestopia não conseguiu carregar esta ROM"},
+    "Não foi possível ler o jogo", "Nestopia não conseguiu carregar esta ROM",
+    "MINUS — GUIA / REMAPEAR", "COMO JOGAR", "Minus: voltar • ←/→: páginas",
+    "JOY-CON ESQUERDO — JOGADOR 1", "Direcional/stick: mover\nSL: B e Select\nSR: A\nZL: Turbo B • L: Turbo A\nClique no stick: Start\nMinus durante o jogo: lista",
+    "JOY-CON DIREITO — ZAPPER", "Giroscópio: mirar\nZR: atirar\nPlus: centralizar\nPlus + clique no stick: centralizar\nSL/SR: sem uso",
+    "REMAPEAR BOTÕES", "↑/↓ escolher • SL atribuir • stick: padrão • ←/→ páginas • Minus voltar", "Pressione um botão do Joy-Con indicado…"},
    {"Deutsch", "ZAPP-con — NES-SPIELE", "Zielen mit dem Joy-Con-Gyroskop", "STEUERUNG",
     "Wählen: Steuerkreuz hoch/runter; SL oder Stick startet",
     "Spiel: Steuerkreuz/Stick bewegen; SL=B; SR=A",
-    "ZL/L: Turbo B/A; Stick=START; MINUS=SELECT",
+    "ZL/L: Turbo B/A; Stick=START; SL=SELECT",
     "RECHTER JOY-CON: Gyro-Ziel; ZR feuert",
     "PLUS zentriert; MINUS zurück zur Spieleliste",
     "WICHTIG: JOY-CON-REIHENFOLGE", "Zuerst den LINKEN Joy-Con (Spieler 1), danach den RECHTEN (Spieler 2) abnehmen.",
     "App erst starten, wenn beide Joy-Con abgenommen sind.", "SPRACHE  L/R", "TEMPO  ←/→", "NES-SPIELE",
     "KEINE SPIELE", "ROM-Dateien nach /switch/gyroduckhunt/roms kopieren",
     "GETRENNTE CONTROLLER OK", "JOY-CON EINZELN TRENNEN", "GYRO BEREIT", "WARTE AUF GYRO",
-    "Spiel kann nicht gelesen werden", "Nestopia konnte diese ROM nicht laden"},
+    "Spiel kann nicht gelesen werden", "Nestopia konnte diese ROM nicht laden",
+    "MINUS — ANLEITUNG / TASTEN", "SO SPIELST DU", "Minus: zurück • ←/→: Seiten",
+    "LINKER JOY-CON — SPIELER 1", "Steuerkreuz/Stick: bewegen\nSL: B und Select\nSR: A\nZL: Turbo B • L: Turbo A\nStick drücken: Start\nMinus im Spiel: Spieleliste",
+    "RECHTER JOY-CON — ZAPPER", "Gyro: zielen\nZR: schießen\nPlus: zentrieren\nPlus + Stick drücken: zentrieren\nSL/SR: ohne Funktion",
+    "TASTEN NEU BELEGEN", "↑/↓ wählen • SL belegen • Stick: Standard • ←/→ Seiten • Minus zurück", "Drücke eine Taste am angezeigten Joy-Con…"},
    {"Italiano", "ZAPP-con — GIOCHI NES", "Mira con il giroscopio Joy-Con", "COMANDI",
     "Scegli: croce su/giù; SL o stick per avviare",
     "Gioco: croce/stick muove; SL=B; SR=A",
-    "ZL/L: Turbo B/A; stick=START; MINUS=SELECT",
+    "ZL/L: Turbo B/A; stick=START; SL=SELECT",
     "JOY-CON DESTRO: mira gyro; ZR spara",
     "PLUS centra; MINUS torna alla lista giochi",
     "IMPORTANTE: ORDINE JOY-CON", "Rimuovi prima il Joy-Con SINISTRO (giocatore 1), poi il DESTRO (giocatore 2).",
     "Avvia l’app dopo aver rimosso entrambi.", "LINGUA  L/R", "VELOCITÀ  ←/→", "GIOCHI NES",
     "NESSUN GIOCO", "Copia le ROM in /switch/gyroduckhunt/roms",
     "CONTROLLER SEPARATI OK", "COLLEGA I JOY-CON SEPARATI", "GYRO PRONTO", "ATTESA GYRO",
-    "Impossibile leggere il gioco", "Nestopia non riesce a caricare questa ROM"}
+    "Impossibile leggere il gioco", "Nestopia non riesce a caricare questa ROM",
+    "MINUS — GUIDA / RIMAPPA", "COME GIOCARE", "Minus: indietro • ←/→: pagine",
+    "JOY-CON SINISTRO — GIOCATORE 1", "Croce/stick: muovi\nSL: B e Select\nSR: A\nZL: Turbo B • L: Turbo A\nPremi stick: Start\nMinus durante il gioco: lista",
+    "JOY-CON DESTRO — ZAPPER", "Gyro: mira\nZR: spara\nPlus: centra\nPlus + premi stick: centra\nSL/SR: non assegnati",
+    "RIMAPPA I PULSANTI", "↑/↓ scegli • SL assegna • stick: predefinito • ←/→ pagine • Minus indietro", "Premi un tasto sul Joy-Con indicato…"},
+   {"Қазақша", "ZAPP-con — NES ОЙЫНДАРЫ", "Joy-Con гироскопымен көздеңіз", "БАСҚАРУ",
+    "Таңдау: крестовина жоғары/төмен; SL не стик — бастау",
+    "Ойында: крестовина/стик — қозғалу; SL=B; SR=A",
+    "ZL/L — Turbo B/A; стик басу=START; SL=SELECT",
+    "ОҢ JOY-CON: гирокөздеу; ZR — ату",
+    "PLUS — көздеуді ортаға келтіру; MINUS — ойындар тізімі",
+    "МАҢЫЗДЫ: JOY-CON РЕТІ", "Алдымен СОЛ жақ Joy-Con-ды (1-ойыншы), содан кейін ОҢ жақты (2-ойыншы) ажыратыңыз.",
+    "Қолданбаны екі Joy-Con ажыратылғаннан кейін іске қосыңыз.", "ТІЛ  L/R", "КӨЗДЕУ ЖЫЛДАМДЫҒЫ  ←/→", "NES ОЙЫНДАРЫ",
+    "ОЙЫН ТАБЫЛМАДЫ", "/switch/gyroduckhunt/roms ішіне ROM көшіріңіз",
+    "БӨЛІНГЕН КОНТРОЛЛЕР ДАЙЫН", "JOY-CON-ДЫ БӨЛЕК АЖЫРАТЫҢЫЗ", "ГИРО ДАЙЫН", "ГИРО КҮТІЛУДЕ",
+    "Ойынды оқу мүмкін болмады", "Nestopia ROM-ды аша алмады",
+    "MINUS — НҰСҚАУЛЫҚ / ТҮЙМЕЛЕР", "ҚАЛАЙ ОЙНАУ КЕРЕК", "Minus: артқа • ←/→: беттер",
+    "СОЛ JOY-CON — 1-ОЙЫНШЫ", "Крестовина/стик: қозғалу\nSL: B және Select\nSR: A\nZL: Turbo B • L: Turbo A\nСтик басу: Start\nОйында Minus: ойындар тізімі",
+    "ОҢ JOY-CON — ZAPPER", "Гироскоп: көздеу\nZR: ату\nPlus: ортаға келтіру\nPlus + стик басу: ортаға келтіру\nSL/SR: тағайындалмаған",
+    "ТҮЙМЕЛЕРДІ ҚАЙТА ТАҒАЙЫНДАУ", "↑/↓ таңдау • SL тағайындау • стик: бастапқы • ←/→ беттер • Minus артқа", "Көрсетілген Joy-Con түймесін басыңыз…"},
+   {"Українська", "ZAPP-con — ІГРИ NES", "Цілься гіроскопом Joy-Con", "КЕРУВАННЯ",
+    "Вибір: хрестовина вгору/вниз; SL або стік — грати",
+    "У грі: хрестовина/стік — рух; SL=B; SR=A",
+    "ZL/L — Turbo B/A; натискання стіка=START; SL=SELECT",
+    "ПРАВИЙ JOY-CON: гіроприціл; ZR — постріл",
+    "PLUS — центрувати приціл; MINUS — список ігор",
+    "ВАЖЛИВО: ПОРЯДОК JOY-CON", "Спочатку від'єднай ЛІВИЙ Joy-Con (гравець 1), потім ПРАВИЙ (гравець 2).",
+    "Запусти застосунок після від'єднання обох Joy-Con.", "МОВА  L/R", "ШВИДКІСТЬ ПРИЦІЛУ  ←/→", "ІГРИ NES",
+    "ІГОР НЕМАЄ", "Скопіюй ROM у /switch/gyroduckhunt/roms",
+    "РОЗДІЛЕНІ КОНТРОЛЕРИ ГОТОВІ", "ВІД'ЄДНАЙ JOY-CON ОКРЕМО", "ГІРО ГОТОВИЙ", "ОЧІКУВАННЯ ГІРО",
+    "Не вдалося прочитати гру", "Nestopia не змогла завантажити ROM",
+    "MINUS — ІНСТРУКЦІЯ / КНОПКИ", "ЯК ГРАТИ", "Minus: назад • ←/→: сторінки",
+    "ЛІВИЙ JOY-CON — ГРАВЕЦЬ 1", "Хрестовина/стік: рух\nSL: B і Select\nSR: A\nZL: Turbo B • L: Turbo A\nНатискання стіка: Start\nMinus у грі: список ігор",
+    "ПРАВИЙ JOY-CON — ZAPPER", "Гіроскоп: приціл\nZR: стріляти\nPlus: центрувати\nPlus + натискання стіка: центрувати\nSL/SR: не призначено",
+    "ПЕРЕНАЗНАЧИТИ КНОПКИ", "↑/↓ вибір • SL призначити • стік: скинути • ←/→ сторінки • Minus назад", "Натисни кнопку на вказаному Joy-Con…"},
+   {"Беларуская", "ZAPP-con — ГУЛЬНІ NES", "Цэлься гіраскопам Joy-Con", "КІРАВАННЕ",
+    "Выбар: крыжавіна ўверх/уніз; SL або стык — гуляць",
+    "У гульні: крыжавіна/стык — рух; SL=B; SR=A",
+    "ZL/L — Turbo B/A; націск стыка=START; SL=SELECT",
+    "ПРАВЫ JOY-CON: гіра-прыцэл; ZR — стрэл",
+    "PLUS — цэнтраванне прыцэла; MINUS — спіс гульняў",
+    "ВАЖНА: ПАРАДАК JOY-CON", "Спачатку адлучыце ЛЕВЫ Joy-Con (гулец 1), затым ПРАВЫ (гулец 2).",
+    "Запусціце праграму пасля адлучэння абодвух Joy-Con.", "МОВА  L/R", "ХУТКАСЦЬ ПРЫЦЭЛА  ←/→", "ГУЛЬНІ NES",
+    "ГУЛЬНЯЎ НЯМА", "Скапіруйце ROM у /switch/gyroduckhunt/roms",
+    "АДЗІНОЧНЫЯ КАНТРОЛЕРЫ ГАТОВЫЯ", "АДЛУЧАЙЦЕ JOY-CON ПААСОБКУ", "ГІРАСКОП ГАТОВЫ", "ЧАКАННЕ ГІРАСКОПА",
+    "Не ўдалося прачытаць гульню", "Nestopia не змагла загрузіць ROM",
+    "MINUS — ІНСТРУКЦЫЯ / КНОПКІ", "ЯК ГУЛЯЦЬ", "Minus: назад • ←/→: старонкі",
+    "ЛЕВЫ JOY-CON — ГУЛЕЦ 1", "Крыжавіна/стык: рух\nSL: B і Select\nSR: A\nZL: Turbo B • L: Turbo A\nНаціск стыка: Start\nMinus у гульні: спіс гульняў",
+    "ПРАВЫ JOY-CON — ZAPPER", "Гіраскоп: прыцэл\nZR: страляць\nPlus: цэнтраванне\nPlus + націск стыка: цэнтраванне\nSL/SR: не прызначаныя",
+    "ПЕРАПРЫЗНАЧЭННЕ КНОПАК", "↑/↓ выбраць • SL прызначыць • стык: скінуць • ←/→ старонкі • Minus назад", "Націсніце кнопку на паказаным Joy-Con…"}
 };
 
 static const char* localized_read_error(void)
 {
-   return menu_text[std::max(0, std::min(8, app_language))].read_error;
+   return menu_text[std::max(0, std::min(LANGUAGE_COUNT - 1, app_language))].read_error;
 }
 
 static const char* localized_core_error(void)
 {
-   return menu_text[std::max(0, std::min(8, app_language))].core_error;
+   return menu_text[std::max(0, std::min(LANGUAGE_COUNT - 1, app_language))].core_error;
 }
 
 static void clear_text_cache(void)
@@ -613,6 +735,49 @@ static std::string short_name(std::string name)
    return name;
 }
 
+static const char* const remap_action_names[8] = {
+   "NES B", "NES A", "Turbo B", "Turbo A", "Start", "Select",
+   "Zapper fire", "Aim recenter"
+};
+
+static const char* button_name(uint64_t button, bool right_side)
+{
+   if (button == HidNpadButton_LeftSL) return "SL";
+   if (button == HidNpadButton_LeftSR) return "SR";
+   if (button == HidNpadButton_RightSL) return "SL";
+   if (button == HidNpadButton_RightSR) return "SR";
+   if (button == HidNpadButton_StickL) return "L-stick";
+   if (button == HidNpadButton_StickR) return "R-stick";
+   if (button == HidNpadButton_ZL) return "ZL";
+   if (button == HidNpadButton_ZR) return "ZR";
+   if (button == HidNpadButton_Plus) return "+";
+   if (button == HidNpadButton_Minus) return "-";
+   if (button == HidNpadButton_L) return "L";
+   if (button == HidNpadButton_R) return "R";
+   if (button == HidNpadButton_A) return "A";
+   if (button == HidNpadButton_B) return "B";
+   if (button == HidNpadButton_X) return "X";
+   if (button == HidNpadButton_Y) return "Y";
+   if (button == HidNpadButton_Up) return "↑";
+   if (button == HidNpadButton_Down) return "↓";
+   if (button == HidNpadButton_Left) return "←";
+   if (button == HidNpadButton_Right) return "→";
+   (void)right_side;
+   return "—";
+}
+
+static const uint64_t left_remap_buttons[] = {
+   HidNpadButton_LeftSL, HidNpadButton_LeftSR, HidNpadButton_ZL,
+   HidNpadButton_L, HidNpadButton_StickL, HidNpadButton_Up,
+   HidNpadButton_Down, HidNpadButton_Left, HidNpadButton_Right
+};
+static const uint64_t right_remap_buttons[] = {
+   HidNpadButton_RightSL, HidNpadButton_RightSR, HidNpadButton_A,
+   HidNpadButton_B, HidNpadButton_X, HidNpadButton_Y,
+   HidNpadButton_L, HidNpadButton_R, HidNpadButton_ZL,
+   HidNpadButton_ZR, HidNpadButton_StickR, HidNpadButton_Plus
+};
+
 static void render_menu(void)
 {
    const MenuText& t = menu_text[app_language];
@@ -671,6 +836,7 @@ static void render_menu(void)
    draw_text(802, 244, t.warning2, 15, white, 402);
    draw_text(802, 285, t.language_label, 17, cyan);
    draw_text(1004, 285, menu_text[app_language].language_name, 19, white);
+   draw_text(802, 314, t.instruction_link, 14, cyan, 405);
 
    SDL_Rect settings = { 54, 357, 1172, 59 };
    SDL_SetRenderDrawColor(renderer, 11, 19, 32, 255);
@@ -711,6 +877,89 @@ static void render_menu(void)
    SDL_RenderPresent(renderer);
 }
 
+static void render_guide(void)
+{
+   const MenuText& t = menu_text[app_language];
+   SDL_SetRenderDrawColor(renderer, 6, 10, 18, 255);
+   SDL_RenderClear(renderer);
+   SDL_Color white = { 240, 245, 255, 255 };
+   SDL_Color cyan = { 80, 220, 255, 255 };
+   SDL_Color muted = { 171, 190, 215, 255 };
+   if (guide_page == 0 && instruction_texture)
+   {
+      SDL_Rect dst = { 0, 0, SCREEN_W, SCREEN_H };
+      SDL_RenderCopy(renderer, instruction_texture, nullptr, &dst);
+      SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+      SDL_SetRenderDrawColor(renderer, 5, 12, 22, 215);
+      SDL_Rect banner = { 0, 0, SCREEN_W, 48 };
+      SDL_RenderFillRect(renderer, &banner);
+      SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+      draw_text(22, 10, t.guide_title, 23, cyan, 680);
+      draw_text(700, 14, t.guide_hint, 15, white, 560);
+   }
+   else if (guide_page == 1 || (guide_page == 0 && !instruction_texture))
+   {
+      SDL_Rect left_card = { 38, 68, 590, 594 };
+      SDL_Rect right_card = { 652, 68, 590, 594 };
+      SDL_SetRenderDrawColor(renderer, 16, 27, 43, 255);
+      SDL_RenderFillRect(renderer, &left_card);
+      SDL_RenderFillRect(renderer, &right_card);
+      SDL_SetRenderDrawColor(renderer, 40, 78, 107, 255);
+      SDL_RenderDrawRect(renderer, &left_card);
+      SDL_RenderDrawRect(renderer, &right_card);
+      SDL_Rect left_joycon = { 64, 118, 44, 154 };
+      SDL_Rect right_joycon = { 1172, 118, 44, 154 };
+      SDL_SetRenderDrawColor(renderer, 41, 183, 212, 255);
+      SDL_RenderFillRect(renderer, &left_joycon);
+      SDL_SetRenderDrawColor(renderer, 244, 68, 74, 255);
+      SDL_RenderFillRect(renderer, &right_joycon);
+      SDL_SetRenderDrawColor(renderer, 220, 238, 250, 255);
+      SDL_Rect stick_l = { 77, 143, 18, 18 };
+      SDL_Rect stick_r = { 1185, 143, 18, 18 };
+      SDL_RenderDrawRect(renderer, &stick_l);
+      SDL_RenderDrawRect(renderer, &stick_r);
+      draw_text(128, 94, t.left_map_title, 23, cyan, 470);
+      draw_text(704, 94, t.right_map_title, 23, SDL_Color{255, 138, 126, 255}, 470);
+      draw_text(128, 150, t.left_map, 21, white, 460);
+      draw_text(704, 150, t.right_map, 21, white, 460);
+      draw_text(38, 682, t.guide_hint, 15, muted, 1180);
+   }
+   else
+   {
+      draw_text(38, 18, t.remap_title, 25, cyan, 1180);
+      draw_text(38, 50, remap_waiting ? t.remap_wait : t.remap_hint,
+            15, remap_waiting ? SDL_Color{255, 190, 94, 255} : muted, 1200);
+      SDL_Rect left_card = { 38, 88, 590, 570 };
+      SDL_Rect right_card = { 652, 88, 590, 570 };
+      SDL_SetRenderDrawColor(renderer, 16, 27, 43, 255);
+      SDL_RenderFillRect(renderer, &left_card);
+      SDL_RenderFillRect(renderer, &right_card);
+      SDL_SetRenderDrawColor(renderer, 40, 78, 107, 255);
+      SDL_RenderDrawRect(renderer, &left_card);
+      SDL_RenderDrawRect(renderer, &right_card);
+      draw_text(64, 104, t.left_map_title, 21, cyan, 540);
+      draw_text(678, 104, t.right_map_title, 21, SDL_Color{255, 138, 126, 255}, 540);
+      for (int i = 0; i < 8; i++)
+      {
+         bool right_side = i >= 6;
+         int row = right_side ? i - 6 : i;
+         int x = right_side ? 680 : 66;
+         int y = 151 + row * (right_side ? 112 : 76);
+         SDL_Rect line = { x - 8, y - 5, 540, 64 };
+         if (i == remap_selection)
+         {
+            SDL_SetRenderDrawColor(renderer, 36, 76, 120, 255);
+            SDL_RenderFillRect(renderer, &line);
+         }
+         draw_text(x, y, remap_action_names[i], 18,
+               i == remap_selection ? cyan : white, 320);
+         draw_text(x + 340, y, button_name(button_map[i], right_side), 20,
+               i == remap_selection ? white : muted, 180);
+      }
+   }
+   SDL_RenderPresent(renderer);
+}
+
 static void poll_switch_input(void)
 {
    padUpdate(&pads[0]);
@@ -719,14 +968,8 @@ static void poll_switch_input(void)
       left_stick = padGetStickPos(&pads[0], 0);
    right_buttons = (uint64_t)padGetButtons(&pads[1]);
 
-   bool recenter_combo =
-      (right_buttons & (HidNpadButton_Plus | HidNpadButton_StickR)) ==
-      (HidNpadButton_Plus | HidNpadButton_StickR);
-   bool recenter_pressed =
-      ((right_buttons & HidNpadButton_Plus) && !(previous_right_buttons & HidNpadButton_Plus)) ||
-      (recenter_combo &&
-       (previous_right_buttons & (HidNpadButton_Plus | HidNpadButton_StickR)) !=
-       (HidNpadButton_Plus | HidNpadButton_StickR));
+   bool recenter_pressed = (right_buttons & button_map[7]) &&
+      !(previous_right_buttons & button_map[7]);
    previous_right_buttons = right_buttons;
    if (recenter_pressed)
    {
@@ -805,6 +1048,12 @@ int main(int, char**)
       return 4;
    game_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888,
          SDL_TEXTUREACCESS_STREAMING, GAME_W, GAME_H);
+   SDL_Surface* instruction_surface = SDL_LoadBMP("romfs:/quickstart.bmp");
+   if (instruction_surface)
+   {
+      instruction_texture = SDL_CreateTextureFromSurface(renderer, instruction_surface);
+      SDL_FreeSurface(instruction_surface);
+   }
    SDL_AudioSpec want = {};
    want.freq = 48000;
    want.format = AUDIO_S16SYS;
@@ -844,13 +1093,64 @@ int main(int, char**)
       uint64_t pressed = buttons & ~previous_buttons;
       previous_buttons = buttons;
 
-      if (!game_loaded)
+      if (!game_loaded && show_guide)
+      {
+         if (pressed & HidNpadButton_Minus)
+         {
+            show_guide = false;
+            remap_waiting = false;
+         }
+         else if (guide_page == 2)
+         {
+            bool was_waiting = remap_waiting;
+            if (remap_waiting)
+            {
+               const uint64_t* candidates = remap_selection < 6 ?
+                  left_remap_buttons : right_remap_buttons;
+               size_t count = remap_selection < 6 ?
+                  sizeof(left_remap_buttons) / sizeof(left_remap_buttons[0]) :
+                  sizeof(right_remap_buttons) / sizeof(right_remap_buttons[0]);
+               uint64_t edges = remap_selection < 6 ? pressed :
+                  (right_buttons & ~previous_remap_right_buttons);
+               for (size_t i = 0; i < count; i++)
+               {
+                  if (edges & candidates[i])
+                  {
+                     button_map[remap_selection] = candidates[i];
+                     remap_waiting = false;
+                     save_settings();
+                     break;
+                  }
+               }
+            }
+            else if (pressed & HidNpadButton_LeftSL)
+               remap_waiting = true;
+            else if (pressed & HidNpadButton_StickL)
+            {
+               button_map[remap_selection] = DEFAULT_BUTTON_MAP[remap_selection];
+               save_settings();
+            }
+            else if (pressed & HidNpadButton_Up)
+               remap_selection = (remap_selection + 7) % 8;
+            else if (pressed & HidNpadButton_Down)
+               remap_selection = (remap_selection + 1) % 8;
+            if (!was_waiting && (pressed & (HidNpadButton_Left | HidNpadButton_Right)))
+            {
+               guide_page = (guide_page + ((pressed & HidNpadButton_Right) ? 1 : 2)) % 3;
+               remap_waiting = false;
+            }
+         }
+         else if (pressed & (HidNpadButton_Left | HidNpadButton_Right))
+            guide_page = (guide_page + ((pressed & HidNpadButton_Right) ? 1 : 2)) % 3;
+         render_guide();
+      }
+      else if (!game_loaded)
       {
          int old_language = app_language;
          if (pressed & HidNpadButton_L)
-            app_language = (app_language + 8) % 9;
+            app_language = (app_language + LANGUAGE_COUNT - 1) % LANGUAGE_COUNT;
          if (pressed & HidNpadButton_R)
-            app_language = (app_language + 1) % 9;
+            app_language = (app_language + 1) % LANGUAGE_COUNT;
          if (app_language != old_language)
          {
             save_settings();
@@ -874,7 +1174,10 @@ int main(int, char**)
          if ((pressed & (HidNpadButton_LeftSL | HidNpadButton_StickL)) && !roms.empty())
             load_selected_rom();
          if (pressed & HidNpadButton_Minus)
-            scan_roms();
+         {
+            show_guide = true;
+            guide_page = 0;
+         }
          if ((pressed & HidNpadButton_Plus) || (right_buttons & HidNpadButton_Plus))
             running = false;
          if (roms.empty() || !game_loaded)
@@ -893,6 +1196,7 @@ int main(int, char**)
          retro_run();
          cursor_dx = cursor_dy = 0;
       }
+      previous_remap_right_buttons = right_buttons;
    }
    if (game_loaded)
       retro_unload_game();
@@ -905,6 +1209,8 @@ int main(int, char**)
    close_ui_font();
    if (game_texture)
       SDL_DestroyTexture(game_texture);
+   if (instruction_texture)
+      SDL_DestroyTexture(instruction_texture);
    if (renderer)
       SDL_DestroyRenderer(renderer);
    if (window_handle)
